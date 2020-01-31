@@ -192,12 +192,16 @@ ASFLAGS		+=	$(firmware-asflags-y)
 
 ARFLAGS		=	rcs
 
-ELFFLAGS	+=	-Wl,--build-id=none -N -static-libgcc -lgcc
+ELFFLAGS	+=	-Wl,--build-id=none -Wl,--omagic -static-libgcc -lgcc
 ELFFLAGS	+=	$(platform-ldflags-y)
 ELFFLAGS	+=	$(firmware-ldflags-y)
 
 MERGEFLAGS	+=	-r
+ifeq ($(LD_IS_LLD), 1)
+MERGEFLAGS	+=	-b elf
+else
 MERGEFLAGS	+=	-b elf$(PLATFORM_RISCV_XLEN)-littleriscv
+endif
 MERGEFLAGS	+=	-m elf$(PLATFORM_RISCV_XLEN)lriscv
 
 DTCFLAGS	=	-O dtb
