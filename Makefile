@@ -192,7 +192,7 @@ ASFLAGS		+=	$(firmware-asflags-y)
 
 ARFLAGS		=	rcs
 
-ELFFLAGS	+=	-Wl,--build-id=none -Wl,--omagic -static-libgcc -lgcc
+ELFFLAGS	+=	-Wl,--build-id=none -Wl,--omagic -static-libgcc
 ELFFLAGS	+=	$(platform-ldflags-y)
 ELFFLAGS	+=	$(firmware-ldflags-y)
 
