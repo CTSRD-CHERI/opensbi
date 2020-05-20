@@ -4,6 +4,7 @@
  * Copyright (c) 2019 Western Digital Corporation or its affiliates.
  */
 
+#include <sbi/riscv_asm.h>
 #include <sbi/riscv_encoding.h>
 #include <sbi/sbi_const.h>
 #include <sbi/sbi_platform.h>
@@ -28,24 +29,6 @@ static int platform_early_init(bool cold_boot)
  * Platform final initialization.
  */
 static int platform_final_init(bool cold_boot)
-{
-	return 0;
-}
-
-/*
- * Get number of PMP regions for given HART.
- */
-static u32 platform_pmp_region_count(u32 hartid)
-{
-	return 0;
-}
-
-/*
- * Get PMP regions details (namely: protection, base address, and size) for
- * a given HART.
- */
-static int platform_pmp_region_info(u32 hartid, u32 index, ulong *prot,
-				    ulong *addr, ulong *log2size)
 {
 	return 0;
 }
@@ -82,7 +65,7 @@ static int platform_console_getc(void)
  */
 static int platform_irqchip_init(bool cold_boot)
 {
-	u32 hartid = sbi_current_hartid();
+	u32 hartid = current_hartid();
 	int ret;
 
 	/* Example if the generic PLIC driver is used */
@@ -179,17 +162,9 @@ static void platform_timer_event_stop(void)
 }
 
 /*
- * Reboot the platform.
+ * Reset the platform.
  */
-static int platform_system_reboot(u32 type)
-{
-	return 0;
-}
-
-/*
- * Shutdown or poweroff the platform.
- */
-static int platform_system_shutdown(u32 type)
+static int platform_system_reset(u32 type)
 {
 	return 0;
 }
@@ -200,8 +175,6 @@ static int platform_system_shutdown(u32 type)
 const struct sbi_platform_operations platform_ops = {
 	.early_init		= platform_early_init,
 	.final_init		= platform_final_init,
-	.pmp_region_count	= platform_pmp_region_count,
-	.pmp_region_info	= platform_pmp_region_info,
 	.console_putc		= platform_console_putc,
 	.console_getc		= platform_console_getc,
 	.console_init		= platform_console_init,
@@ -213,8 +186,7 @@ const struct sbi_platform_operations platform_ops = {
 	.timer_event_stop	= platform_timer_event_stop,
 	.timer_event_start	= platform_timer_event_start,
 	.timer_init		= platform_timer_init,
-	.system_reboot		= platform_system_reboot,
-	.system_shutdown	= platform_system_shutdown
+	.system_reset		= platform_system_reset
 };
 const struct sbi_platform platform = {
 	.opensbi_version	= OPENSBI_VERSION,
@@ -222,8 +194,6 @@ const struct sbi_platform platform = {
 	.name			= "platform-name",
 	.features		= SBI_PLATFORM_DEFAULT_FEATURES,
 	.hart_count		= 1,
-	.hart_stack_size	= 4096,
-	.disabled_hart_mask	= 0,
-	.tlb_range_flush_limit	= 0,
+	.hart_stack_size	= SBI_PLATFORM_DEFAULT_HART_STACK_SIZE,
 	.platform_ops_addr	= (unsigned long)&platform_ops
 };

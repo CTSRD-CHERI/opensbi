@@ -11,33 +11,45 @@
 #include <sbi/riscv_barrier.h>
 #include <sbi/riscv_encoding.h>
 #include <sbi/riscv_fp.h>
-#include <sbi/riscv_locks.h>
-#include <sbi/sbi_bits.h>
+#include <sbi/sbi_bitops.h>
 #include <sbi/sbi_console.h>
+#include <sbi/sbi_csr_detect.h>
 #include <sbi/sbi_error.h>
 #include <sbi/sbi_hart.h>
+#include <sbi/sbi_math.h>
 #include <sbi/sbi_platform.h>
+#include <sbi/sbi_string.h>
 
-/**
- * Return HART ID of the caller.
- */
-unsigned int sbi_current_hartid()
-{
-	return (u32)csr_read(CSR_MHARTID);
-}
+extern void __sbi_expected_trap(void);
+extern void __sbi_expected_trap_hext(void);
+
+void (*sbi_hart_expected_trap)(void) = &__sbi_expected_trap;
+
+struct hart_features {
+	unsigned long features;
+	unsigned int pmp_count;
+};
+static unsigned long hart_features_offset;
 
 static void mstatus_init(struct sbi_scratch *scratch, u32 hartid)
 {
-	const struct sbi_platform *plat = sbi_platform_ptr(scratch);
+	unsigned long mstatus_val = 0;
 
 	/* Enable FPU */
 	if (misa_extension('D') || misa_extension('F'))
-		csr_write(CSR_MSTATUS, MSTATUS_FS);
+		mstatus_val |=  MSTATUS_FS;
+
+	/* Enable Vector context */
+	if (misa_extension('V'))
+		mstatus_val |=  MSTATUS_VS;
+
+	csr_write(CSR_MSTATUS, mstatus_val);
 
 	/* Enable user/supervisor use of perf counters */
-	if (misa_extension('S') && sbi_platform_has_scounteren(plat))
+	if (misa_extension('S') &&
+	    sbi_hart_has_feature(scratch, SBI_HART_HAS_SCOUNTEREN))
 		csr_write(CSR_SCOUNTEREN, -1);
-	if (sbi_platform_has_mcounteren(plat))
+	if (!sbi_hart_has_feature(scratch, SBI_HART_HAS_MCOUNTEREN))
 		csr_write(CSR_MCOUNTEREN, -1);
 
 	/* Disable all interrupts */
@@ -75,7 +87,7 @@ static int delegate_traps(struct sbi_scratch *scratch, u32 hartid)
 	unsigned long interrupts, exceptions;
 
 	if (!misa_extension('S'))
-		/* No delegation possible as mideleg does not exist*/
+		/* No delegation possible as mideleg does not exist */
 		return 0;
 
 	/* Send M-mode interrupts and most exceptions to S-mode */
@@ -104,48 +116,55 @@ static int delegate_traps(struct sbi_scratch *scratch, u32 hartid)
 	csr_write(CSR_MIDELEG, interrupts);
 	csr_write(CSR_MEDELEG, exceptions);
 
-	if ((csr_read(CSR_MIDELEG) & interrupts) != interrupts)
-		return SBI_EFAIL;
-	if ((csr_read(CSR_MEDELEG) & exceptions) != exceptions)
-		return SBI_EFAIL;
-
 	return 0;
 }
 
-unsigned long log2roundup(unsigned long x)
+void sbi_hart_delegation_dump(struct sbi_scratch *scratch)
 {
-	unsigned long ret = 0;
+#if __riscv_xlen == 32
+	sbi_printf("MIDELEG : 0x%08lx\n", csr_read(CSR_MIDELEG));
+	sbi_printf("MEDELEG : 0x%08lx\n", csr_read(CSR_MEDELEG));
+#else
+	sbi_printf("MIDELEG : 0x%016lx\n", csr_read(CSR_MIDELEG));
+	sbi_printf("MEDELEG : 0x%016lx\n", csr_read(CSR_MEDELEG));
+#endif
+}
 
-	while (ret < __riscv_xlen) {
-		if (x <= (1UL << ret))
-			break;
-		ret++;
-	}
+unsigned int sbi_hart_pmp_count(struct sbi_scratch *scratch)
+{
+	struct hart_features *hfeatures =
+			sbi_scratch_offset_ptr(scratch, hart_features_offset);
 
-	return ret;
+	return hfeatures->pmp_count;
+}
+
+int sbi_hart_pmp_get(struct sbi_scratch *scratch, unsigned int n,
+		     unsigned long *prot_out, unsigned long *addr_out,
+		     unsigned long *size)
+{
+	if (sbi_hart_pmp_count(scratch) <= n)
+		return SBI_EINVAL;
+
+	return pmp_get(n, prot_out, addr_out, size);
 }
 
 void sbi_hart_pmp_dump(struct sbi_scratch *scratch)
 {
-	const struct sbi_platform *plat = sbi_platform_ptr(scratch);
-	unsigned long prot, addr, size, l2l;
-	unsigned int i;
+	unsigned long prot, addr, size;
+	unsigned int i, pmp_count;
 
-	if (!sbi_platform_has_pmp(plat))
+	if (!sbi_hart_has_feature(scratch, SBI_HART_HAS_PMP))
 		return;
 
-	for (i = 0; i < PMP_COUNT; i++) {
-		pmp_get(i, &prot, &addr, &l2l);
+	pmp_count = sbi_hart_pmp_count(scratch);
+	for (i = 0; i < pmp_count; i++) {
+		pmp_get(i, &prot, &addr, &size);
 		if (!(prot & PMP_A))
 			continue;
-		if (l2l < __riscv_xlen)
-			size = (1UL << l2l);
-		else
-			size = 0;
 #if __riscv_xlen == 32
-		sbi_printf("PMP%d: 0x%08lx-0x%08lx (A",
+		sbi_printf("PMP%d    : 0x%08lx-0x%08lx (A",
 #else
-		sbi_printf("PMP%d: 0x%016lx-0x%016lx (A",
+		sbi_printf("PMP%d    : 0x%016lx-0x%016lx (A",
 #endif
 			   i, addr, addr + size - 1);
 		if (prot & PMP_L)
@@ -160,47 +179,242 @@ void sbi_hart_pmp_dump(struct sbi_scratch *scratch)
 	}
 }
 
+int sbi_hart_pmp_check_addr(struct sbi_scratch *scratch, unsigned long addr,
+			    unsigned long attr)
+{
+	unsigned long prot, size, tempaddr;
+	unsigned int i, pmp_count;
+
+	if (!sbi_hart_has_feature(scratch, SBI_HART_HAS_PMP))
+		return SBI_OK;
+
+	pmp_count = sbi_hart_pmp_count(scratch);
+	for (i = 0; i < pmp_count; i++) {
+		pmp_get(i, &prot, &tempaddr, &size);
+		if (!(prot & PMP_A))
+			continue;
+		if (tempaddr <= addr && addr <= tempaddr + size)
+			if (!(prot & attr))
+				return SBI_INVALID_ADDR;
+	}
+
+	return SBI_OK;
+}
+
 static int pmp_init(struct sbi_scratch *scratch, u32 hartid)
 {
-	u32 i, count;
+	u32 i, pmp_idx = 0, pmp_count, count;
 	unsigned long fw_start, fw_size_log2;
 	ulong prot, addr, log2size;
 	const struct sbi_platform *plat = sbi_platform_ptr(scratch);
 
-	if (!sbi_platform_has_pmp(plat))
+	if (!sbi_hart_has_feature(scratch, SBI_HART_HAS_PMP))
 		return 0;
 
+	/* Firmware PMP region to protect OpenSBI firmware */
 	fw_size_log2 = log2roundup(scratch->fw_size);
-	fw_start     = scratch->fw_start & ~((1UL << fw_size_log2) - 1UL);
+	fw_start = scratch->fw_start & ~((1UL << fw_size_log2) - 1UL);
+	pmp_set(pmp_idx++, 0, fw_start, fw_size_log2);
 
-	pmp_set(0, 0, fw_start, fw_size_log2);
-
+	/* Platform specific PMP regions */
 	count = sbi_platform_pmp_region_count(plat, hartid);
-	if ((PMP_COUNT - 1) < count)
-		count = (PMP_COUNT - 1);
-
-	for (i = 0; i < count; i++) {
+	pmp_count = sbi_hart_pmp_count(scratch);
+	for (i = 0; i < count && pmp_idx < (pmp_count - 1); i++) {
 		if (sbi_platform_pmp_region_info(plat, hartid, i, &prot, &addr,
 						 &log2size))
 			continue;
-		pmp_set(i + 1, prot, addr, log2size);
+		pmp_set(pmp_idx++, prot, addr, log2size);
 	}
+
+	/*
+	 * Default PMP region for allowing S-mode and U-mode access to
+	 * memory not covered by:
+	 * 1) Firmware PMP region
+	 * 2) Platform specific PMP regions
+	 */
+	pmp_set(pmp_idx++, PMP_R | PMP_W | PMP_X, 0, __riscv_xlen);
 
 	return 0;
 }
 
-static unsigned long trap_info_offset;
+/**
+ * Check whether a particular hart feature is available
+ *
+ * @param scratch pointer to the HART scratch space
+ * @param feature the feature to check
+ * @returns true (feature available) or false (feature not available)
+ */
+bool sbi_hart_has_feature(struct sbi_scratch *scratch, unsigned long feature)
+{
+	struct hart_features *hfeatures =
+			sbi_scratch_offset_ptr(scratch, hart_features_offset);
+
+	if (hfeatures->features & feature)
+		return true;
+	else
+		return false;
+}
+
+static unsigned long hart_get_features(struct sbi_scratch *scratch)
+{
+	struct hart_features *hfeatures =
+			sbi_scratch_offset_ptr(scratch, hart_features_offset);
+
+	return hfeatures->features;
+}
+
+static inline char *sbi_hart_feature_id2string(unsigned long feature)
+{
+	char *fstr = NULL;
+
+	if (!feature)
+		return NULL;
+
+	switch (feature) {
+	case SBI_HART_HAS_PMP:
+		fstr = "pmp";
+		break;
+	case SBI_HART_HAS_SCOUNTEREN:
+		fstr = "scounteren";
+		break;
+	case SBI_HART_HAS_MCOUNTEREN:
+		fstr = "mcounteren";
+		break;
+	case SBI_HART_HAS_TIME:
+		fstr = "time";
+		break;
+	default:
+		break;
+	}
+
+	return fstr;
+}
+
+/**
+ * Get the hart features in string format
+ *
+ * @param scratch pointer to the HART scratch space
+ * @param features_str pointer to a char array where the features string will be
+ *		       updated
+ * @param nfstr length of the features_str. The feature string will be truncated
+ *		if nfstr is not long enough.
+ */
+void sbi_hart_get_features_str(struct sbi_scratch *scratch,
+			       char *features_str, int nfstr)
+{
+	unsigned long features, feat = 1UL;
+	char *temp;
+	int offset = 0;
+
+	if (!features_str || nfstr <= 0)
+		return;
+	sbi_memset(features_str, 0, nfstr);
+
+	features = hart_get_features(scratch);
+	if (!features)
+		goto done;
+
+	do {
+		if (features & feat) {
+			temp = sbi_hart_feature_id2string(feat);
+			if (temp) {
+				sbi_snprintf(features_str + offset, nfstr,
+					     "%s,", temp);
+				offset = offset + sbi_strlen(temp) + 1;
+			}
+		}
+		feat = feat << 1;
+	} while (feat <= SBI_HART_HAS_LAST_FEATURE);
+
+done:
+	if (offset)
+		features_str[offset - 1] = '\0';
+	else
+		sbi_strncpy(features_str, "none", nfstr);
+}
+
+static void hart_detect_features(struct sbi_scratch *scratch)
+{
+	struct sbi_trap_info trap = {0};
+	struct hart_features *hfeatures;
+	unsigned long val;
+
+	/* Reset hart features */
+	hfeatures = sbi_scratch_offset_ptr(scratch, hart_features_offset);
+	hfeatures->features = 0;
+	hfeatures->pmp_count = 0;
+
+	/* Detect if hart supports PMP feature */
+#define __detect_pmp(__pmp_csr)					\
+	val = csr_read_allowed(__pmp_csr, (ulong)&trap);	\
+	if (!trap.cause) {					\
+		csr_write_allowed(__pmp_csr, (ulong)&trap, val);\
+		if (!trap.cause)				\
+			hfeatures->pmp_count++;			\
+	}
+	__detect_pmp(CSR_PMPADDR0);
+	__detect_pmp(CSR_PMPADDR1);
+	__detect_pmp(CSR_PMPADDR2);
+	__detect_pmp(CSR_PMPADDR3);
+	__detect_pmp(CSR_PMPADDR4);
+	__detect_pmp(CSR_PMPADDR5);
+	__detect_pmp(CSR_PMPADDR6);
+	__detect_pmp(CSR_PMPADDR7);
+	__detect_pmp(CSR_PMPADDR8);
+	__detect_pmp(CSR_PMPADDR9);
+	__detect_pmp(CSR_PMPADDR10);
+	__detect_pmp(CSR_PMPADDR11);
+	__detect_pmp(CSR_PMPADDR12);
+	__detect_pmp(CSR_PMPADDR13);
+	__detect_pmp(CSR_PMPADDR14);
+	__detect_pmp(CSR_PMPADDR15);
+#undef __detect_pmp
+
+	/* Set hart PMP feature if we have at least one PMP region */
+	if (hfeatures->pmp_count)
+		hfeatures->features |= SBI_HART_HAS_PMP;
+
+	/* Detect if hart supports SCOUNTEREN feature */
+	trap.cause = 0;
+	val = csr_read_allowed(CSR_SCOUNTEREN, (unsigned long)&trap);
+	if (!trap.cause) {
+		csr_write_allowed(CSR_SCOUNTEREN, (unsigned long)&trap, val);
+		if (!trap.cause)
+			hfeatures->features |= SBI_HART_HAS_SCOUNTEREN;
+	}
+
+	/* Detect if hart supports MCOUNTEREN feature */
+	trap.cause = 0;
+	val = csr_read_allowed(CSR_MCOUNTEREN, (unsigned long)&trap);
+	if (!trap.cause) {
+		csr_write_allowed(CSR_MCOUNTEREN, (unsigned long)&trap, val);
+		if (!trap.cause)
+			hfeatures->features |= SBI_HART_HAS_MCOUNTEREN;
+	}
+
+	/* Detect if hart supports time CSR */
+	trap.cause = 0;
+	csr_read_allowed(CSR_TIME, (unsigned long)&trap);
+	if (!trap.cause)
+		hfeatures->features |= SBI_HART_HAS_TIME;
+}
 
 int sbi_hart_init(struct sbi_scratch *scratch, u32 hartid, bool cold_boot)
 {
 	int rc;
 
 	if (cold_boot) {
-		trap_info_offset = sbi_scratch_alloc_offset(__SIZEOF_POINTER__,
-							    "HART_TRAP_INFO");
-		if (!trap_info_offset)
+		if (misa_extension('H'))
+			sbi_hart_expected_trap = &__sbi_expected_trap_hext;
+
+		hart_features_offset = sbi_scratch_alloc_offset(
+						sizeof(struct hart_features),
+						"HART_FEATURES");
+		if (!hart_features_offset)
 			return SBI_ENOMEM;
 	}
+
+	hart_detect_features(scratch);
 
 	mstatus_init(scratch, hartid);
 
@@ -213,29 +427,6 @@ int sbi_hart_init(struct sbi_scratch *scratch, u32 hartid, bool cold_boot)
 		return rc;
 
 	return pmp_init(scratch, hartid);
-}
-
-void *sbi_hart_get_trap_info(struct sbi_scratch *scratch)
-{
-	unsigned long *trap_info;
-
-	if (!trap_info_offset)
-		return NULL;
-
-	trap_info = sbi_scratch_offset_ptr(scratch, trap_info_offset);
-
-	return (void *)(*trap_info);
-}
-
-void sbi_hart_set_trap_info(struct sbi_scratch *scratch, void *data)
-{
-	unsigned long *trap_info;
-
-	if (!trap_info_offset)
-		return;
-
-	trap_info = sbi_scratch_offset_ptr(scratch, trap_info_offset);
-	*trap_info = (unsigned long)data;
 }
 
 void __attribute__((noreturn)) sbi_hart_hang(void)
@@ -309,107 +500,4 @@ sbi_hart_switch_mode(unsigned long arg0, unsigned long arg1,
 	register unsigned long a1 asm("a1") = arg1;
 	__asm__ __volatile__("mret" : : "r"(a0), "r"(a1));
 	__builtin_unreachable();
-}
-
-static spinlock_t avail_hart_mask_lock	      = SPIN_LOCK_INITIALIZER;
-static volatile unsigned long avail_hart_mask = 0;
-
-void sbi_hart_mark_available(u32 hartid)
-{
-	spin_lock(&avail_hart_mask_lock);
-	avail_hart_mask |= (1UL << hartid);
-	spin_unlock(&avail_hart_mask_lock);
-}
-
-void sbi_hart_unmark_available(u32 hartid)
-{
-	spin_lock(&avail_hart_mask_lock);
-	avail_hart_mask &= ~(1UL << hartid);
-	spin_unlock(&avail_hart_mask_lock);
-}
-
-ulong sbi_hart_available_mask(void)
-{
-	ulong ret;
-
-	spin_lock(&avail_hart_mask_lock);
-	ret = avail_hart_mask;
-	spin_unlock(&avail_hart_mask_lock);
-
-	return ret;
-}
-
-typedef struct sbi_scratch *(*h2s)(ulong hartid);
-
-struct sbi_scratch *sbi_hart_id_to_scratch(struct sbi_scratch *scratch,
-					   u32 hartid)
-{
-	return ((h2s)scratch->hartid_to_scratch)(hartid);
-}
-
-#define COLDBOOT_WAIT_BITMAP_SIZE __riscv_xlen
-static spinlock_t coldboot_lock = SPIN_LOCK_INITIALIZER;
-static unsigned long coldboot_done = 0;
-static unsigned long coldboot_wait_bitmap = 0;
-
-void sbi_hart_wait_for_coldboot(struct sbi_scratch *scratch, u32 hartid)
-{
-	unsigned long saved_mie;
-	const struct sbi_platform *plat = sbi_platform_ptr(scratch);
-
-	if ((sbi_platform_hart_count(plat) <= hartid) ||
-	    (COLDBOOT_WAIT_BITMAP_SIZE <= hartid))
-		sbi_hart_hang();
-
-	/* Save MIE CSR */
-	saved_mie = csr_read(CSR_MIE);
-
-	/* Set MSIE bit to receive IPI */
-	csr_set(CSR_MIE, MIP_MSIP);
-
-	/* Acquire coldboot lock */
-	spin_lock(&coldboot_lock);
-
-	/* Mark current HART as waiting */
-	coldboot_wait_bitmap |= (1UL << hartid);
-
-	/* Wait for coldboot to finish using WFI */
-	while (!coldboot_done) {
-		spin_unlock(&coldboot_lock);
-		wfi();
-		spin_lock(&coldboot_lock);
-	};
-
-	/* Unmark current HART as waiting */
-	coldboot_wait_bitmap &= ~(1UL << hartid);
-
-	/* Release coldboot lock */
-	spin_unlock(&coldboot_lock);
-
-	/* Restore MIE CSR */
-	csr_write(CSR_MIE, saved_mie);
-
-	/* Clear current HART IPI */
-	sbi_platform_ipi_clear(plat, hartid);
-}
-
-void sbi_hart_wake_coldboot_harts(struct sbi_scratch *scratch, u32 hartid)
-{
-	const struct sbi_platform *plat = sbi_platform_ptr(scratch);
-	int max_hart			= sbi_platform_hart_count(plat);
-
-	/* Acquire coldboot lock */
-	spin_lock(&coldboot_lock);
-
-	/* Mark coldboot done */
-	coldboot_done = 1;
-
-	/* Send an IPI to all HARTs waiting for coldboot */
-	for (int i = 0; i < max_hart; i++) {
-		if ((i != hartid) && (coldboot_wait_bitmap & (1UL << i)))
-			sbi_platform_ipi_send(plat, i);
-	}
-
-	/* Release coldboot lock */
-	spin_unlock(&coldboot_lock);
 }

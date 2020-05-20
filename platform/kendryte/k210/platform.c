@@ -7,14 +7,14 @@
  *   Damien Le Moal <damien.lemoal@wdc.com>
  */
 
+#include <sbi/riscv_asm.h>
 #include <sbi/riscv_encoding.h>
-#include <sbi/sbi_const.h>
-#include <sbi/sbi_hart.h>
-#include <sbi/sbi_platform.h>
 #include <sbi/sbi_console.h>
+#include <sbi/sbi_const.h>
+#include <sbi/sbi_platform.h>
 #include <sbi_utils/irqchip/plic.h>
-#include <sbi_utils/sys/clint.h>
 #include <sbi_utils/serial/sifive-uart.h>
+#include <sbi_utils/sys/clint.h>
 #include "platform.h"
 
 static u32 k210_get_clk_freq(void)
@@ -55,7 +55,7 @@ static int k210_console_init(void)
 static int k210_irqchip_init(bool cold_boot)
 {
 	int rc;
-	u32 hartid = sbi_current_hartid();
+	u32 hartid = current_hartid();
 
 	if (cold_boot) {
 		rc = plic_cold_irqchip_init(K210_PLIC_BASE_ADDR,
@@ -96,18 +96,10 @@ static int k210_timer_init(bool cold_boot)
 	return clint_warm_timer_init();
 }
 
-static int k210_system_reboot(u32 type)
+static int k210_system_reset(u32 type)
 {
 	/* For now nothing to do. */
-	sbi_printf("System reboot\n");
-
-	return 0;
-}
-
-static int k210_system_shutdown(u32 type)
-{
-	/* For now nothing to do. */
-	sbi_printf("System shutdown\n");
+	sbi_printf("System reset\n");
 
 	return 0;
 }
@@ -128,8 +120,7 @@ const struct sbi_platform_operations platform_ops = {
 	.timer_event_stop  = clint_timer_event_stop,
 	.timer_event_start = clint_timer_event_start,
 
-	.system_reboot	 = k210_system_reboot,
-	.system_shutdown = k210_system_shutdown
+	.system_reset	 = k210_system_reset
 };
 
 const struct sbi_platform platform = {
@@ -138,7 +129,6 @@ const struct sbi_platform platform = {
 	.name			= "Kendryte K210",
 	.features		= SBI_PLATFORM_HAS_TIMER_VALUE,
 	.hart_count		= K210_HART_COUNT,
-	.hart_stack_size	= K210_HART_STACK_SIZE,
-	.disabled_hart_mask	= 0,
+	.hart_stack_size	= SBI_PLATFORM_DEFAULT_HART_STACK_SIZE,
 	.platform_ops_addr	= (unsigned long)&platform_ops
 };

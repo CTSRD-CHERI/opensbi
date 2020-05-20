@@ -160,6 +160,32 @@ _relocate_done:
 	li	ra, 0
 	call	_reset_regs
 
+	/* Zero-out BSS */
+	la	s4, _bss_start
+	la	s5, _bss_end
+_bss_zero:
+	REG_S	zero, (s4)
+	add	s4, s4, __SIZEOF_POINTER__
+	blt	s4, s5, _bss_zero
+
+	/* Setup temporary trap handler */
+	la	s4, _start_hang
+	csrw	CSR_MTVEC, s4
+
+	/* Setup temporary stack */
+	la	s4, _fw_end
+	li	s5, (SBI_SCRATCH_SIZE * 2)
+	add	sp, s4, s5
+
+	/*
+	 * Initialize platform
+	 * Note: The a0 to a4 registers passed to the
+	 * firmware are parameters to this function.
+	 */
+	MOV_5R	s0, a0, s1, a1, s2, a2, s3, a3, s4, a4
+	call	fw_platform_init
+	MOV_5R	a0, s0, a1, s1, a2, s2, a3, s3, a4, s4
+
 	/* Allow main firmware to save info */
 	MOV_5R	s0, a0, s1, a1, s2, a2, s3, a3, s4, a4
 	call	fw_save_info
@@ -245,15 +271,7 @@ _scratch_init:
 	add	t1, t1, t2
 	blt	t1, s7, _scratch_init
 
-	/* Zero-out BSS */
-	la	a4, _bss_start
-	la	a5, _bss_end
-_bss_zero:
-	REG_S	zero, (a4)
-	add	a4, a4, __SIZEOF_POINTER__
-	blt	a4, a5, _bss_zero
-
-	/* Override pervious arg1 */
+	/* Override previous arg1 */
 	MOV_3R	s0, a0, s1, a1, s2, a2
 	call	fw_prev_arg1
 	add	t1, a0, zero
@@ -331,7 +349,7 @@ _fdt_reloc_done:
 	fence	rw, rw
 	j	_start_warm
 
-	/* waitting for boot hart done (_boot_status == 2) */
+	/* waiting for boot hart to be done (_boot_status == 2) */
 _wait_for_boot_hart:
 	li	t0, BOOT_STATUS_BOOT_HART_DONE
 	la	t1, _boot_status
@@ -351,6 +369,7 @@ _start_warm:
 	csrw	CSR_MIE, zero
 	csrw	CSR_MIP, zero
 
+	/* Find HART count and HART stack size */
 	la	a4, platform
 #if __riscv_xlen == 64
 	lwu	s7, SBI_PLATFORM_HART_COUNT_OFFSET(a4)
@@ -359,12 +378,29 @@ _start_warm:
 	lw	s7, SBI_PLATFORM_HART_COUNT_OFFSET(a4)
 	lw	s8, SBI_PLATFORM_HART_STACK_SIZE_OFFSET(a4)
 #endif
+	REG_L	s9, SBI_PLATFORM_HART_INDEX2ID_OFFSET(a4)
 
-	/* HART ID should be within expected limit */
+	/* Find HART id */
 	csrr	s6, CSR_MHARTID
-	bge	s6, s7, _start_hang
 
-	/* find the scratch space for this hart */
+	/* Find HART index */
+	beqz	s9, 3f
+	li	a4, 0
+1:
+#if __riscv_xlen == 64
+	lwu	a5, (s9)
+#else
+	lw	a5, (s9)
+#endif
+	beq	a5, s6, 2f
+	add	s9, s9, 4
+	add	a4, a4, 1
+	blt	a4, s7, 1b
+	li	a4, -1
+2:	add	s6, a4, zero
+3:	bge	s6, s7, _start_hang
+
+	/* Find the scratch space based on HART index */
 	la	tp, _fw_end
 	mul	a5, s7, s8
 	add	tp, tp, a5
@@ -382,9 +418,6 @@ _start_warm:
 	/* Setup trap handler */
 	la	a4, _trap_handler
 	csrw	CSR_MTVEC, a4
-	/* Make sure that mtvec is updated */
-1:	csrr	a5, CSR_MTVEC
-	bne	a4, a5, 1b
 
 	/* Initialize SBI runtime */
 	csrr	a0, CSR_MSCRATCH
@@ -409,35 +442,27 @@ _link_end:
 	.align 3
 	.globl _hartid_to_scratch
 _hartid_to_scratch:
-	add	sp, sp, -(3 * __SIZEOF_POINTER__)
-	REG_S	s0, (sp)
-	REG_S	s1, (__SIZEOF_POINTER__)(sp)
-	REG_S	s2, (__SIZEOF_POINTER__ * 2)(sp)
 	/*
 	 * a0 -> HART ID (passed by caller)
-	 * s0 -> HART Stack Size
-	 * s1 -> HART Stack End
-	 * s2 -> Temporary
+	 * a1 -> HART Index (passed by caller)
+	 * t0 -> HART Stack Size
+	 * t1 -> HART Stack End
+	 * t2 -> Temporary
 	 */
-	la	s2, platform
+	la	t2, platform
 #if __riscv_xlen == 64
-	lwu	s0, SBI_PLATFORM_HART_STACK_SIZE_OFFSET(s2)
-	lwu	s2, SBI_PLATFORM_HART_COUNT_OFFSET(s2)
+	lwu	t0, SBI_PLATFORM_HART_STACK_SIZE_OFFSET(t2)
+	lwu	t2, SBI_PLATFORM_HART_COUNT_OFFSET(t2)
 #else
-	lw	s0, SBI_PLATFORM_HART_STACK_SIZE_OFFSET(s2)
-	lw	s2, SBI_PLATFORM_HART_COUNT_OFFSET(s2)
+	lw	t0, SBI_PLATFORM_HART_STACK_SIZE_OFFSET(t2)
+	lw	t2, SBI_PLATFORM_HART_COUNT_OFFSET(t2)
 #endif
-	mul	s2, s2, s0
-	la	s1, _fw_end
-	add	s1, s1, s2
-	mul	s2, s0, a0
-	sub	s1, s1, s2
-	li	s2, SBI_SCRATCH_SIZE
-	sub	a0, s1, s2
-	REG_L	s0, (sp)
-	REG_L	s1, (__SIZEOF_POINTER__)(sp)
-	REG_L	s2, (__SIZEOF_POINTER__ * 2)(sp)
-	add	sp, sp, (3 * __SIZEOF_POINTER__)
+	sub	t2, t2, a1
+	mul	t2, t2, t0
+	la	t1, _fw_end
+	add	t1, t1, t2
+	li	t2, SBI_SCRATCH_SIZE
+	sub	a0, t1, t2
 	ret
 
 	.section .entry, "ax", %progbits
@@ -446,6 +471,13 @@ _hartid_to_scratch:
 _start_hang:
 	wfi
 	j	_start_hang
+
+	.section .entry, "ax", %progbits
+	.align 3
+	.globl fw_platform_init
+	.weak fw_platform_init
+fw_platform_init:
+	ret
 
 	.section .entry, "ax", %progbits
 	.align 3
@@ -546,7 +578,6 @@ _skip_mstatush_save:
 
 	/* Call C routine */
 	add	a0, sp, zero
-	csrr	a1, CSR_MSCRATCH
 	call	sbi_trap_handler
 
 	/* Restore all general regisers except SP and T0 */

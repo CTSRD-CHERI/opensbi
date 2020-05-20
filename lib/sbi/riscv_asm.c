@@ -17,8 +17,13 @@ int misa_extension_imp(char ext)
 {
 	unsigned long misa = csr_read(CSR_MISA);
 
-	if (misa)
-		return misa & (1 << (ext - 'A'));
+	if (misa) {
+		if ('A' <= ext && ext <= 'Z')
+			return misa & (1 << (ext - 'A'));
+		if ('a' <= ext && ext <= 'z')
+			return misa & (1 << (ext - 'a'));
+		return 0;
+	}
 
 	return sbi_platform_misa_extension(sbi_platform_thishart_ptr(), ext);
 }
@@ -42,6 +47,45 @@ int misa_xlen(void)
 		: "t0", "t1");
 
 	return r ? r : -1;
+}
+
+void misa_string(int xlen, char *out, unsigned int out_sz)
+{
+	unsigned int i, pos = 0;
+	const char valid_isa_order[] = "iemafdqclbjtpvnsuhkorwxyzg";
+
+	if (!out)
+		return;
+
+	if (5 <= (out_sz - pos)) {
+		out[pos++] = 'r';
+		out[pos++] = 'v';
+		switch (xlen) {
+		case 1:
+			out[pos++] = '3';
+			out[pos++] = '2';
+			break;
+		case 2:
+			out[pos++] = '6';
+			out[pos++] = '4';
+			break;
+		case 3:
+			out[pos++] = '1';
+			out[pos++] = '2';
+			out[pos++] = '8';
+			break;
+		default:
+			return;
+		}
+	}
+
+	for (i = 0; i < array_size(valid_isa_order) && (pos < out_sz); i++) {
+		if (misa_extension_imp(valid_isa_order[i]))
+			out[pos++] = valid_isa_order[i];
+	}
+
+	if (pos < out_sz)
+		out[pos++] = '\0';
 }
 
 unsigned long csr_read_num(int csr_num)
@@ -207,7 +251,7 @@ int pmp_set(unsigned int n, unsigned long prot, unsigned long addr,
 	if (n >= PMP_COUNT || log2len > __riscv_xlen || log2len < PMP_SHIFT)
 		return SBI_EINVAL;
 
-		/* calculate PMP register and offset */
+	/* calculate PMP register and offset */
 #if __riscv_xlen == 32
 	pmpcfg_csr   = CSR_PMPCFG0 + (n >> 2);
 	pmpcfg_shift = (n & 3) << 3;
@@ -249,16 +293,16 @@ int pmp_set(unsigned int n, unsigned long prot, unsigned long addr,
 }
 
 int pmp_get(unsigned int n, unsigned long *prot_out, unsigned long *addr_out,
-	    unsigned long *log2len_out)
+	    unsigned long *size)
 {
 	int pmpcfg_csr, pmpcfg_shift, pmpaddr_csr;
 	unsigned long cfgmask, pmpcfg, prot;
 	unsigned long t1, addr, log2len;
 
 	/* check parameters */
-	if (n >= PMP_COUNT || !prot_out || !addr_out || !log2len_out)
+	if (n >= PMP_COUNT || !prot_out || !addr_out || !size)
 		return SBI_EINVAL;
-	*prot_out = *addr_out = *log2len_out = 0;
+	*prot_out = *addr_out = *size = 0;
 
 	/* calculate PMP register and offset */
 #if __riscv_xlen == 32
@@ -299,7 +343,9 @@ int pmp_get(unsigned int n, unsigned long *prot_out, unsigned long *addr_out,
 	/* return details */
 	*prot_out    = prot;
 	*addr_out    = addr;
-	*log2len_out = log2len;
+
+	if (log2len < __riscv_xlen)
+		*size = (1UL << log2len);
 
 	return 0;
 }

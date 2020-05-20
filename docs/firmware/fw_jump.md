@@ -1,4 +1,4 @@
-OpenSBI Firmware with Jump Address *FW_JUMP*
+OpenSBI Firmware with Jump Address (FW_JUMP)
 ============================================
 
 OpenSBI **firmware with Jump Address (FW_JUMP)** is a firmware which only
@@ -44,9 +44,8 @@ follows:
 *FW_JUMP* Example
 -----------------
 
-The *[qemu/virt]* and *[qemu/sifive_u]* platforms illustrate how to configure
-and use a *FW_JUMP* firmware. Detailed information regarding these platforms
-can be found in the platform documentation files.
+The *[qemu/virt]* platform illustrates how to configure and use a *FW_JUMP*
+firmware. Detailed information regarding these platforms can be found in the
+platform documentation files.
 
 [qemu/virt]: ../platform/qemu_virt.md
-[qemu/sifive_u]: ../platform/qemu_sifive_u.md
