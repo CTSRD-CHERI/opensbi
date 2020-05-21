@@ -243,14 +243,14 @@ static int print(char **out, u32 *out_len, const char *format, va_list args)
 			}
 			if (*format == 'p') {
 				pc += printi(out, out_len,
-					     va_arg(args, unsigned long), 16, 0,
-					     width, flags, 'a');
+					     (unsigned long)va_arg(args, void*),
+					     16, 0, width, flags, 'a');
 				acnt += sizeof(unsigned long);
 				continue;
 			}
 			if (*format == 'P') {
 				pc += printi(out, out_len,
-					     va_arg(args, unsigned long), 16, 0,
+					     va_arg(args, uintptr_t), 16, 0,
 					     width, flags, 'A');
 				acnt += sizeof(unsigned long);
 				continue;
