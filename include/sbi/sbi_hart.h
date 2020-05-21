@@ -31,10 +31,16 @@ struct sbi_scratch;
 
 int sbi_hart_init(struct sbi_scratch *scratch, u32 hartid, bool cold_boot);
 
+#ifdef __CHERI_PURE_CAPABILITY__
+typedef void * __capability mtvec_t;
+#else
+typedef unsigned long mtvec_t;
+#endif
+
 extern void (*sbi_hart_expected_trap)(void);
-static inline ulong sbi_hart_expected_trap_addr(void)
+static inline mtvec_t sbi_hart_expected_trap_addr(void)
 {
-	return (ulong)sbi_hart_expected_trap;
+	return (mtvec_t)sbi_hart_expected_trap;
 }
 
 void sbi_hart_delegation_dump(struct sbi_scratch *scratch);
@@ -52,8 +58,7 @@ void sbi_hart_get_features_str(struct sbi_scratch *scratch,
 void __attribute__((noreturn)) sbi_hart_hang(void);
 
 void __attribute__((noreturn))
-sbi_hart_switch_mode(unsigned long arg0, unsigned long arg1,
-		     unsigned long next_addr, unsigned long next_mode,
-		     bool next_virt);
+sbi_hart_switch_mode(unsigned long arg0, unsigned long arg1, mtvec_t next_addr,
+		     unsigned long next_mode, bool next_virt);
 
 #endif

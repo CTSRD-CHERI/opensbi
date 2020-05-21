@@ -37,25 +37,31 @@
 #define SZREG		__REG_SEL(8, 4)
 #define LGREG		__REG_SEL(3, 2)
 
-#if __SIZEOF_POINTER__ == 8
-#ifdef __ASSEMBLY__
-#define RISCV_PTR		.dword
-#define RISCV_SZPTR		8
-#define RISCV_LGPTR		3
+#if __has_feature(capabilities)
+#define SIZEOF_ADDR (__CHERI_ADDRESS_BITS__ / 8)
 #else
-#define RISCV_PTR		".dword"
-#define RISCV_SZPTR		"8"
-#define RISCV_LGPTR		"3"
+#define SIZEOF_ADDR __SIZEOF_POINTER__
 #endif
-#elif __SIZEOF_POINTER__ == 4
+
+#if SIZEOF_ADDR == 8
 #ifdef __ASSEMBLY__
-#define RISCV_PTR		.word
-#define RISCV_SZPTR		4
-#define RISCV_LGPTR		2
+#define RISCV_ADDR		.dword
+#define RISCV_SZADDR		8
+#define RISCV_LGADDR		3
 #else
-#define RISCV_PTR		".word"
-#define RISCV_SZPTR		"4"
-#define RISCV_LGPTR		"2"
+#define RISCV_ADDR		".dword"
+#define RISCV_SZADDR		"8"
+#define RISCV_LGADDR		"3"
+#endif
+#elif SIZEOF_ADDR == 4
+#ifdef __ASSEMBLY__
+#define RISCV_ADDR		.word
+#define RISCV_SZADDR		4
+#define RISCV_LGADDR		2
+#else
+#define RISCV_ADDR		".word"
+#define RISCV_SZADDR		"4"
+#define RISCV_LGADDR		"2"
 #endif
 #else
 #error "Unexpected __SIZEOF_POINTER__"
@@ -109,6 +115,26 @@
 				     : "rK"(__v)                   \
 				     : "memory");                  \
 	})
+
+#if __has_feature(capabilities)
+#define cheri_scr_write(csr, val)                                       \
+	({                                                              \
+		__uintcap_t __v = val;                                  \
+		__asm__ __volatile__("cspecialw " __ASM_STR(csr) ", %0" \
+				     :                                  \
+				     : "C"(__v)                         \
+				     : "memory");                       \
+	})
+#define cheri_scr_read(csr)                                          \
+	({                                                           \
+		__uintcap_t __v;                                     \
+		__asm__ __volatile__("cspecialr %0, " __ASM_STR(csr) \
+				     : "=C"(__v)                     \
+				     :                               \
+				     : "memory");                    \
+		__v;                                                 \
+	})
+#endif
 
 #define csr_read_set(csr, val)                                          \
 	({                                                              \

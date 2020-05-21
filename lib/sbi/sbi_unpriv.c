@@ -114,7 +114,7 @@ void sbi_store_u64(u64 *addr, u64 val,
 }
 #endif
 
-ulong sbi_get_insn(ulong mepc, struct sbi_trap_info *trap)
+ulong sbi_get_insn(trap_reg_t mepc, struct sbi_trap_info *trap)
 {
 	register ulong tinfo asm("a3");
 	register ulong ttmp asm("a4");
@@ -141,21 +141,21 @@ ulong sbi_get_insn(ulong mepc, struct sbi_trap_info *trap)
 	      [tinfo] "+&r"(tinfo), [ttmp] "+&r"(ttmp),
 	      [insn] "=&r"(insn)
 	    : [mprv] "r"(MSTATUS_MPRV | MSTATUS_MXR),
-	      [taddr] "r"((ulong)trap), [addr] "r"(mepc)
+	      [taddr] "r"((ulong)trap), [addr] "r"(mepc.intval)
 	    : "memory");
 
 	switch (trap->cause) {
 	case CAUSE_LOAD_ACCESS:
 		trap->cause = CAUSE_FETCH_ACCESS;
-		trap->tval = mepc;
+		trap->tval = mepc.intval;
 		break;
 	case CAUSE_LOAD_PAGE_FAULT:
 		trap->cause = CAUSE_FETCH_PAGE_FAULT;
-		trap->tval = mepc;
+		trap->tval = mepc.intval;
 		break;
 	case CAUSE_LOAD_GUEST_PAGE_FAULT:
 		trap->cause = CAUSE_FETCH_GUEST_PAGE_FAULT;
-		trap->tval = mepc;
+		trap->tval = mepc.intval;
 		break;
 	default:
 		break;

@@ -19,6 +19,18 @@
 #include <sbi/sbi_timer.h>
 #include <sbi/sbi_trap.h>
 
+_Static_assert(SBI_TRAP_REGS_OFFSET(mstatusH) ==
+		       __builtin_offsetof(struct sbi_trap_regs, mstatusH),
+	       "wrong offset for mstatusH");
+_Static_assert(SBI_TRAP_REGS_SIZE == sizeof(struct sbi_trap_regs), "");
+_Static_assert(SBI_TRAP_INFO_OFFSET(epc) ==
+		       __builtin_offsetof(struct sbi_trap_info, epc),
+	       "wrong offset for epc");
+_Static_assert(SBI_TRAP_INFO_SIZE == sizeof(struct sbi_trap_info), "");
+#if __has_feature(capabilities)
+_Static_assert(_Alignof(struct sbi_trap_regs) == sizeof(void* __capability), "");
+#endif
+
 static void __noreturn sbi_trap_error(const char *msg, int rc,
 				      ulong mcause, ulong mtval, ulong mtval2,
 				      ulong mtinst, struct sbi_trap_regs *regs)
@@ -34,39 +46,39 @@ static void __noreturn sbi_trap_error(const char *msg, int rc,
 			   __func__, hartid, mtval2, mtinst);
 	}
 	sbi_printf("%s: hart%d: mepc=0x%" PRILX " mstatus=0x%" PRILX "\n",
-		   __func__, hartid, regs->mepc, regs->mstatus);
+		   __func__, hartid, regs->mepc.intval, regs->mstatus);
 	sbi_printf("%s: hart%d: %s=0x%" PRILX " %s=0x%" PRILX "\n", __func__,
-		   hartid, "ra", regs->ra, "sp", regs->sp);
+		   hartid, "ra", regs->ra.intval, "sp", regs->sp.intval);
 	sbi_printf("%s: hart%d: %s=0x%" PRILX " %s=0x%" PRILX "\n", __func__,
-		   hartid, "gp", regs->gp, "tp", regs->tp);
+		   hartid, "gp", regs->gp.intval, "tp", regs->tp.intval);
 	sbi_printf("%s: hart%d: %s=0x%" PRILX " %s=0x%" PRILX "\n", __func__,
-		   hartid, "s0", regs->s0, "s1", regs->s1);
+		   hartid, "s0", regs->s0.intval, "s1", regs->s1.intval);
 	sbi_printf("%s: hart%d: %s=0x%" PRILX " %s=0x%" PRILX "\n", __func__,
-		   hartid, "a0", regs->a0, "a1", regs->a1);
+		   hartid, "a0", regs->a0.intval, "a1", regs->a1.intval);
 	sbi_printf("%s: hart%d: %s=0x%" PRILX " %s=0x%" PRILX "\n", __func__,
-		   hartid, "a2", regs->a2, "a3", regs->a3);
+		   hartid, "a2", regs->a2.intval, "a3", regs->a3.intval);
 	sbi_printf("%s: hart%d: %s=0x%" PRILX " %s=0x%" PRILX "\n", __func__,
-		   hartid, "a4", regs->a4, "a5", regs->a5);
+		   hartid, "a4", regs->a4.intval, "a5", regs->a5.intval);
 	sbi_printf("%s: hart%d: %s=0x%" PRILX " %s=0x%" PRILX "\n", __func__,
-		   hartid, "a6", regs->a6, "a7", regs->a7);
+		   hartid, "a6", regs->a6.intval, "a7", regs->a7.intval);
 	sbi_printf("%s: hart%d: %s=0x%" PRILX " %s=0x%" PRILX "\n", __func__,
-		   hartid, "s2", regs->s2, "s3", regs->s3);
+		   hartid, "s2", regs->s2.intval, "s3", regs->s3.intval);
 	sbi_printf("%s: hart%d: %s=0x%" PRILX " %s=0x%" PRILX "\n", __func__,
-		   hartid, "s4", regs->s4, "s5", regs->s5);
+		   hartid, "s4", regs->s4.intval, "s5", regs->s5.intval);
 	sbi_printf("%s: hart%d: %s=0x%" PRILX " %s=0x%" PRILX "\n", __func__,
-		   hartid, "s6", regs->s6, "s7", regs->s7);
+		   hartid, "s6", regs->s6.intval, "s7", regs->s7.intval);
 	sbi_printf("%s: hart%d: %s=0x%" PRILX " %s=0x%" PRILX "\n", __func__,
-		   hartid, "s8", regs->s8, "s9", regs->s9);
+		   hartid, "s8", regs->s8.intval, "s9", regs->s9.intval);
 	sbi_printf("%s: hart%d: %s=0x%" PRILX " %s=0x%" PRILX "\n", __func__,
-		   hartid, "s10", regs->s10, "s11", regs->s11);
+		   hartid, "s10", regs->s10.intval, "s11", regs->s11.intval);
 	sbi_printf("%s: hart%d: %s=0x%" PRILX " %s=0x%" PRILX "\n", __func__,
-		   hartid, "t0", regs->t0, "t1", regs->t1);
+		   hartid, "t0", regs->t0.intval, "t1", regs->t1.intval);
 	sbi_printf("%s: hart%d: %s=0x%" PRILX " %s=0x%" PRILX "\n", __func__,
-		   hartid, "t2", regs->t2, "t3", regs->t3);
+		   hartid, "t2", regs->t2.intval, "t3", regs->t3.intval);
 	sbi_printf("%s: hart%d: %s=0x%" PRILX " %s=0x%" PRILX "\n", __func__,
-		   hartid, "t4", regs->t4, "t5", regs->t5);
+		   hartid, "t4", regs->t4.intval, "t5", regs->t5.intval);
 	sbi_printf("%s: hart%d: %s=0x%" PRILX "\n", __func__, hartid, "t6",
-		   regs->t6);
+		   regs->t6.intval);
 
 	sbi_hart_hang();
 }
@@ -135,13 +147,20 @@ int sbi_trap_redirect(struct sbi_trap_regs *regs,
 
 	/* Update exception related CSRs */
 	if (next_virt) {
+#if __has_feature(capabilities)
+// #warning "CHERI is missing VSEPCC register"
+		(void)vsstatus;
+		sbi_printf("WARNING: CHERI H extension SCRs are missing!\n");
+		sbi_trap_error("HYPERVISOR NOT IMPLEMENTED", 1, trap->cause,
+			       trap->tval, trap->tval2, trap->tinst, regs);
+#else
 		/* Update VS-mode exception info */
 		csr_write(CSR_VSTVAL, trap->tval);
-		csr_write(CSR_VSEPC, trap->epc);
+		csr_write(CSR_VSEPC, trap->epc.intval);
 		csr_write(CSR_VSCAUSE, trap->cause);
 
 		/* Set MEPC to VS-mode exception vector base */
-		regs->mepc = csr_read(CSR_VSTVEC);
+		regs->mepc.intval = csr_read(CSR_VSTVEC);
 
 		/* Set MPP to VS-mode */
 		regs->mstatus &= ~MSTATUS_MPP;
@@ -165,14 +184,23 @@ int sbi_trap_redirect(struct sbi_trap_regs *regs,
 
 		/* Update VS-mode SSTATUS CSR */
 		csr_write(CSR_VSSTATUS, vsstatus);
+#endif
 	} else {
 		/* Update S-mode exception info */
 		csr_write(CSR_STVAL, trap->tval);
-		csr_write(CSR_SEPC, trap->epc);
+#if __has_feature(capabilities)
+		cheri_scr_write(sepcc, trap->epc.value);
+#else
+		csr_write(CSR_SEPC, trap->epc.value);
+#endif
 		csr_write(CSR_SCAUSE, trap->cause);
 
 		/* Set MEPC to S-mode exception vector base */
-		regs->mepc = csr_read(CSR_STVEC);
+#if __has_feature(capabilities)
+		regs->mepc.value = cheri_scr_read(stcc);
+#else
+		regs->mepc.value = csr_read(CSR_STVEC);
+#endif
 
 		/* Set MPP to S-mode */
 		regs->mstatus &= ~MSTATUS_MPP;

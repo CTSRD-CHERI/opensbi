@@ -153,12 +153,12 @@ fw_options:
 	.section .entry, "ax", %progbits
 	.align 3
 _dynamic_next_arg1:
-	RISCV_PTR 0x0
+	RISCV_ADDR 0x0
 _dynamic_next_addr:
-	RISCV_PTR 0x0
+	RISCV_ADDR 0x0
 _dynamic_next_mode:
-	RISCV_PTR PRV_S
+	RISCV_ADDR PRV_S
 _dynamic_options:
-	RISCV_PTR 0x0
+	RISCV_ADDR 0x0
 _dynamic_boot_hart:
-	RISCV_PTR -1
+	RISCV_ADDR -1

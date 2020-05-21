@@ -12,10 +12,10 @@
 
 #if __riscv_xlen == 64
 #define __REG_SEL(a, b)		__ASM_STR(a)
-#define RISCV_PTR		.dword
+#define RISCV_ADDR		.dword
 #elif __riscv_xlen == 32
 #define __REG_SEL(a, b)		__ASM_STR(b)
-#define RISCV_PTR		.word
+#define RISCV_ADDR		.word
 #else
 #error "Unexpected __riscv_xlen"
 #endif
@@ -44,7 +44,7 @@ _start:
 	la	a5, _bss_end
 _bss_zero:
 	REG_S	zero, (a4)
-	add	a4, a4, __SIZEOF_POINTER__
+	add	a4, a4, __SIZEOF_LONG__
 	blt	a4, a5, _bss_zero
 
 _start_warm:
@@ -54,7 +54,13 @@ _start_warm:
 
 	/* Setup exception vectors */
 	la	a3, _start_hang
+#if __has_feature(capabilities)
+	cspecialr	ct0, pcc
+	csetaddr	ca3, ct0, a3
+	cspecialw	stcc, ca3
+#else
 	csrw	CSR_STVEC, a3
+#endif
 
 	/* Setup stack */
 	la	a3, _payload_end
@@ -81,8 +87,8 @@ _start_hang:
 	.section .entry, "ax", %progbits
 	.align	3
 _hart_lottery:
-	RISCV_PTR	0
+	RISCV_ADDR	0
 _boot_a0:
-	RISCV_PTR	0
+	RISCV_ADDR	0
 _boot_a1:
-	RISCV_PTR	0
+	RISCV_ADDR	0

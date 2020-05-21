@@ -95,19 +95,20 @@ int sbi_ecall_handler(struct sbi_trap_regs *regs)
 {
 	int ret = 0;
 	struct sbi_ecall_extension *ext;
-	unsigned long extension_id = regs->a7;
-	unsigned long func_id = regs->a6;
+	unsigned long extension_id = regs->a7.intval;
+	unsigned long func_id = regs->a6.intval;
 	struct sbi_trap_info trap = {0};
 	unsigned long out_val = 0;
 	bool is_0_1_spec = 0;
 	unsigned long args[6];
 
-	args[0] = regs->a0;
-	args[1] = regs->a1;
-	args[2] = regs->a2;
-	args[3] = regs->a3;
-	args[4] = regs->a4;
-	args[5] = regs->a5;
+	/* XXX: do any of these take pointers? */
+	args[0] = regs->a0.intval;
+	args[1] = regs->a1.intval;
+	args[2] = regs->a2.intval;
+	args[3] = regs->a3.intval;
+	args[4] = regs->a4.intval;
+	args[5] = regs->a5.intval;
 
 	ext = sbi_ecall_find_extension(extension_id);
 	if (ext && ext->handle) {
@@ -132,10 +133,10 @@ int sbi_ecall_handler(struct sbi_trap_regs *regs)
 		 * accordingly for now. Once fatal errors are defined, that
 		 * case should be handled differently.
 		 */
-		regs->mepc += 4;
-		regs->a0 = ret;
+		regs->mepc.value += 4;
+		regs->a0.intval = ret;
 		if (!is_0_1_spec)
-			regs->a1 = out_val;
+			regs->a1.value = out_val;
 	}
 
 	return 0;

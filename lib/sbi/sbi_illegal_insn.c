@@ -84,7 +84,7 @@ static int system_opcode_insn(ulong insn, struct sbi_trap_regs *regs)
 
 	SET_RD(insn, regs, csr_val);
 
-	regs->mepc += 4;
+	regs->mepc.value += 4;
 
 	return 0;
 }

@@ -13,6 +13,18 @@
 #include <sbi/sbi_scratch.h>
 #include <sbi/sbi_trap.h>
 
+#if __has_feature(capabilities)
+#if defined(__CHERI_PURE_CAPABILITY__)
+#error "Not implemented yet"
+#else
+#define SAVE_TRAP_REG(reg, slot, sp) sc c##reg, SBI_TRAP_REGS_OFFSET(slot)(sp)
+#define RESTORE_TRAP_REG(reg, slot, sp) lc c##reg, SBI_TRAP_REGS_OFFSET(slot)(sp)
+#endif
+#else
+#define SAVE_TRAP_REG(reg, slot, sp) REG_S	reg, SBI_TRAP_REGS_OFFSET(slot)(sp)
+#define RESTORE_TRAP_REG(reg, slot, sp) REG_L	reg, SBI_TRAP_REGS_OFFSET(slot)(sp)
+#endif
+
 #define BOOT_STATUS_RELOCATE_DONE	1
 #define BOOT_STATUS_BOOT_HART_DONE	2
 
@@ -96,8 +108,8 @@ _relocate_copy_to_lower:
 _relocate_copy_to_lower_loop:
 	REG_L	t3, 0(t2)
 	REG_S	t3, 0(t0)
-	add	t0, t0, __SIZEOF_POINTER__
-	add	t2, t2, __SIZEOF_POINTER__
+	add	t0, t0, SZREG
+	add	t2, t2, SZREG
 	blt	t0, t1, _relocate_copy_to_lower_loop
 	jr	t4
 _relocate_copy_to_upper:
@@ -112,8 +124,8 @@ _relocate_copy_to_upper:
 	BRANGE	t0, t3, t5, _start_hang
 	BRANGE	t2, t5, t0, _start_hang
 _relocate_copy_to_upper_loop:
-	add	t3, t3, -__SIZEOF_POINTER__
-	add	t1, t1, -__SIZEOF_POINTER__
+	add	t3, t3, -SZREG
+	add	t1, t1, -SZREG
 	REG_L	t2, 0(t3)
 	REG_S	t2, 0(t1)
 	blt	t0, t1, _relocate_copy_to_upper_loop
@@ -165,7 +177,7 @@ _relocate_done:
 	la	s5, _bss_end
 _bss_zero:
 	REG_S	zero, (s4)
-	add	s4, s4, __SIZEOF_POINTER__
+	add	s4, s4, SZREG
 	blt	s4, s5, _bss_zero
 
 	/* Setup temporary trap handler */
@@ -337,8 +349,8 @@ _prev_arg1_override_done:
 _fdt_reloc_again:
 	REG_L	t3, 0(t0)
 	REG_S	t3, 0(t1)
-	add	t0, t0, __SIZEOF_POINTER__
-	add	t1, t1, __SIZEOF_POINTER__
+	add	t0, t0, SZREG
+	add	t1, t1, SZREG
 	blt	t1, t2, _fdt_reloc_again
 _fdt_reloc_done:
 
@@ -428,15 +440,15 @@ _start_warm:
 
 	.align 3
 _relocate_lottery:
-	RISCV_PTR	0
+	RISCV_ADDR	0
 _boot_status:
-	RISCV_PTR	0
+	RISCV_ADDR	0
 _load_start:
-	RISCV_PTR	_fw_start
+	RISCV_ADDR	_fw_start
 _link_start:
-	RISCV_PTR	_fw_start
+	RISCV_ADDR	_fw_start
 _link_end:
-	RISCV_PTR	_fw_reloc_end
+	RISCV_ADDR	_fw_reloc_end
 
 	.section .entry, "ax", %progbits
 	.align 3
@@ -517,20 +529,25 @@ _trap_handler_m_mode:
 
 _trap_handler_all_mode:
 	/* Save original SP (from T0) on stack */
-	REG_S	t0, SBI_TRAP_REGS_OFFSET(sp)(sp)
+	SAVE_TRAP_REG(t0, sp, sp)
 
 	/* Restore T0 from scratch space */
 	REG_L	t0, SBI_SCRATCH_TMP0_OFFSET(tp)
 
 	/* Save T0 on stack */
-	REG_S	t0, SBI_TRAP_REGS_OFFSET(t0)(sp)
+	SAVE_TRAP_REG(t0, t0, sp)
 
 	/* Swap TP and MSCRATCH */
 	csrrw	tp, CSR_MSCRATCH, tp
 
 	/* Save MEPC and MSTATUS CSRs */
+#if __has_feature(capabilities)
+	cspecialr	ct0, mepcc
+	SAVE_TRAP_REG(t0, mepcc, sp)
+#else
 	csrr	t0, CSR_MEPC
-	REG_S	t0, SBI_TRAP_REGS_OFFSET(mepc)(sp)
+	SAVE_TRAP_REG(t0, mepc, sp)
+#endif
 	csrr	t0, CSR_MSTATUS
 	REG_S	t0, SBI_TRAP_REGS_OFFSET(mstatus)(sp)
 	REG_S	zero, SBI_TRAP_REGS_OFFSET(mstatusH)(sp)
@@ -545,75 +562,84 @@ _skip_mstatush_save:
 #endif
 
 	/* Save all general regisers except SP and T0 */
-	REG_S	zero, SBI_TRAP_REGS_OFFSET(zero)(sp)
-	REG_S	ra, SBI_TRAP_REGS_OFFSET(ra)(sp)
-	REG_S	gp, SBI_TRAP_REGS_OFFSET(gp)(sp)
-	REG_S	tp, SBI_TRAP_REGS_OFFSET(tp)(sp)
-	REG_S	t1, SBI_TRAP_REGS_OFFSET(t1)(sp)
-	REG_S	t2, SBI_TRAP_REGS_OFFSET(t2)(sp)
-	REG_S	s0, SBI_TRAP_REGS_OFFSET(s0)(sp)
-	REG_S	s1, SBI_TRAP_REGS_OFFSET(s1)(sp)
-	REG_S	a0, SBI_TRAP_REGS_OFFSET(a0)(sp)
-	REG_S	a1, SBI_TRAP_REGS_OFFSET(a1)(sp)
-	REG_S	a2, SBI_TRAP_REGS_OFFSET(a2)(sp)
-	REG_S	a3, SBI_TRAP_REGS_OFFSET(a3)(sp)
-	REG_S	a4, SBI_TRAP_REGS_OFFSET(a4)(sp)
-	REG_S	a5, SBI_TRAP_REGS_OFFSET(a5)(sp)
-	REG_S	a6, SBI_TRAP_REGS_OFFSET(a6)(sp)
-	REG_S	a7, SBI_TRAP_REGS_OFFSET(a7)(sp)
-	REG_S	s2, SBI_TRAP_REGS_OFFSET(s2)(sp)
-	REG_S	s3, SBI_TRAP_REGS_OFFSET(s3)(sp)
-	REG_S	s4, SBI_TRAP_REGS_OFFSET(s4)(sp)
-	REG_S	s5, SBI_TRAP_REGS_OFFSET(s5)(sp)
-	REG_S	s6, SBI_TRAP_REGS_OFFSET(s6)(sp)
-	REG_S	s7, SBI_TRAP_REGS_OFFSET(s7)(sp)
-	REG_S	s8, SBI_TRAP_REGS_OFFSET(s8)(sp)
-	REG_S	s9, SBI_TRAP_REGS_OFFSET(s9)(sp)
-	REG_S	s10, SBI_TRAP_REGS_OFFSET(s10)(sp)
-	REG_S	s11, SBI_TRAP_REGS_OFFSET(s11)(sp)
-	REG_S	t3, SBI_TRAP_REGS_OFFSET(t3)(sp)
-	REG_S	t4, SBI_TRAP_REGS_OFFSET(t4)(sp)
-	REG_S	t5, SBI_TRAP_REGS_OFFSET(t5)(sp)
-	REG_S	t6, SBI_TRAP_REGS_OFFSET(t6)(sp)
+#if __has_feature(capabilities)
+	SAVE_TRAP_REG(null, zero, sp)
+#else
+	SAVE_TRAP_REG(zero, zero, sp)
+#endif
+	SAVE_TRAP_REG(ra, ra, sp)
+	SAVE_TRAP_REG(gp, gp, sp)
+	SAVE_TRAP_REG(tp, tp, sp)
+	SAVE_TRAP_REG(t1, t1, sp)
+	SAVE_TRAP_REG(t2, t2, sp)
+	SAVE_TRAP_REG(s0, s0, sp)
+	SAVE_TRAP_REG(s1, s1, sp)
+	SAVE_TRAP_REG(a0, a0, sp)
+	SAVE_TRAP_REG(a1, a1, sp)
+	SAVE_TRAP_REG(a2, a2, sp)
+	SAVE_TRAP_REG(a3, a3, sp)
+	SAVE_TRAP_REG(a4, a4, sp)
+	SAVE_TRAP_REG(a5, a5, sp)
+	SAVE_TRAP_REG(a6, a6, sp)
+	SAVE_TRAP_REG(a7, a7, sp)
+	SAVE_TRAP_REG(s2, s2, sp)
+	SAVE_TRAP_REG(s3, s3, sp)
+	SAVE_TRAP_REG(s4, s4, sp)
+	SAVE_TRAP_REG(s5, s5, sp)
+	SAVE_TRAP_REG(s6, s6, sp)
+	SAVE_TRAP_REG(s7, s7, sp)
+	SAVE_TRAP_REG(s8, s8, sp)
+	SAVE_TRAP_REG(s9, s9, sp)
+	SAVE_TRAP_REG(s10, s10, sp)
+	SAVE_TRAP_REG(s11, s11, sp)
+	SAVE_TRAP_REG(t3, t3, sp)
+	SAVE_TRAP_REG(t4, t4, sp)
+	SAVE_TRAP_REG(t5, t5, sp)
+	SAVE_TRAP_REG(t6, t6, sp)
 
 	/* Call C routine */
 	add	a0, sp, zero
 	call	sbi_trap_handler
 
 	/* Restore all general regisers except SP and T0 */
-	REG_L	ra, SBI_TRAP_REGS_OFFSET(ra)(sp)
-	REG_L	gp, SBI_TRAP_REGS_OFFSET(gp)(sp)
-	REG_L	tp, SBI_TRAP_REGS_OFFSET(tp)(sp)
-	REG_L	t1, SBI_TRAP_REGS_OFFSET(t1)(sp)
-	REG_L	t2, SBI_TRAP_REGS_OFFSET(t2)(sp)
-	REG_L	s0, SBI_TRAP_REGS_OFFSET(s0)(sp)
-	REG_L	s1, SBI_TRAP_REGS_OFFSET(s1)(sp)
-	REG_L	a0, SBI_TRAP_REGS_OFFSET(a0)(sp)
-	REG_L	a1, SBI_TRAP_REGS_OFFSET(a1)(sp)
-	REG_L	a2, SBI_TRAP_REGS_OFFSET(a2)(sp)
-	REG_L	a3, SBI_TRAP_REGS_OFFSET(a3)(sp)
-	REG_L	a4, SBI_TRAP_REGS_OFFSET(a4)(sp)
-	REG_L	a5, SBI_TRAP_REGS_OFFSET(a5)(sp)
-	REG_L	a6, SBI_TRAP_REGS_OFFSET(a6)(sp)
-	REG_L	a7, SBI_TRAP_REGS_OFFSET(a7)(sp)
-	REG_L	s2, SBI_TRAP_REGS_OFFSET(s2)(sp)
-	REG_L	s3, SBI_TRAP_REGS_OFFSET(s3)(sp)
-	REG_L	s4, SBI_TRAP_REGS_OFFSET(s4)(sp)
-	REG_L	s5, SBI_TRAP_REGS_OFFSET(s5)(sp)
-	REG_L	s6, SBI_TRAP_REGS_OFFSET(s6)(sp)
-	REG_L	s7, SBI_TRAP_REGS_OFFSET(s7)(sp)
-	REG_L	s8, SBI_TRAP_REGS_OFFSET(s8)(sp)
-	REG_L	s9, SBI_TRAP_REGS_OFFSET(s9)(sp)
-	REG_L	s10, SBI_TRAP_REGS_OFFSET(s10)(sp)
-	REG_L	s11, SBI_TRAP_REGS_OFFSET(s11)(sp)
-	REG_L	t3, SBI_TRAP_REGS_OFFSET(t3)(sp)
-	REG_L	t4, SBI_TRAP_REGS_OFFSET(t4)(sp)
-	REG_L	t5, SBI_TRAP_REGS_OFFSET(t5)(sp)
-	REG_L	t6, SBI_TRAP_REGS_OFFSET(t6)(sp)
+	RESTORE_TRAP_REG(ra, ra, sp)
+	RESTORE_TRAP_REG(gp, gp, sp)
+	RESTORE_TRAP_REG(tp, tp, sp)
+	RESTORE_TRAP_REG(t1, t1, sp)
+	RESTORE_TRAP_REG(t2, t2, sp)
+	RESTORE_TRAP_REG(s0, s0, sp)
+	RESTORE_TRAP_REG(s1, s1, sp)
+	RESTORE_TRAP_REG(a0, a0, sp)
+	RESTORE_TRAP_REG(a1, a1, sp)
+	RESTORE_TRAP_REG(a2, a2, sp)
+	RESTORE_TRAP_REG(a3, a3, sp)
+	RESTORE_TRAP_REG(a4, a4, sp)
+	RESTORE_TRAP_REG(a5, a5, sp)
+	RESTORE_TRAP_REG(a6, a6, sp)
+	RESTORE_TRAP_REG(a7, a7, sp)
+	RESTORE_TRAP_REG(s2, s2, sp)
+	RESTORE_TRAP_REG(s3, s3, sp)
+	RESTORE_TRAP_REG(s4, s4, sp)
+	RESTORE_TRAP_REG(s5, s5, sp)
+	RESTORE_TRAP_REG(s6, s6, sp)
+	RESTORE_TRAP_REG(s7, s7, sp)
+	RESTORE_TRAP_REG(s8, s8, sp)
+	RESTORE_TRAP_REG(s9, s9, sp)
+	RESTORE_TRAP_REG(s10, s10, sp)
+	RESTORE_TRAP_REG(s11, s11, sp)
+	RESTORE_TRAP_REG(t3, t3, sp)
+	RESTORE_TRAP_REG(t4, t4, sp)
+	RESTORE_TRAP_REG(t5, t5, sp)
+	RESTORE_TRAP_REG(t6, t6, sp)
 
 	/* Restore MEPC and MSTATUS CSRs */
-	REG_L	t0, SBI_TRAP_REGS_OFFSET(mepc)(sp)
+#if __has_feature(capabilities)
+	RESTORE_TRAP_REG(t0, mepcc, sp)
+	cspecialw	mepcc, ct0
+#else
+	RESTORE_TRAP_REG(t0, mepc, sp)
 	csrw	CSR_MEPC, t0
+#endif
 	REG_L	t0, SBI_TRAP_REGS_OFFSET(mstatus)(sp)
 	csrw	CSR_MSTATUS, t0
 #if __riscv_xlen == 32
@@ -627,10 +653,10 @@ _skip_mstatush_restore:
 #endif
 
 	/* Restore T0 */
-	REG_L	t0, SBI_TRAP_REGS_OFFSET(t0)(sp)
+	RESTORE_TRAP_REG(t0, t0, sp)
 
 	/* Restore SP */
-	REG_L	sp, SBI_TRAP_REGS_OFFSET(sp)(sp)
+	RESTORE_TRAP_REG(sp, sp, sp)
 
 	mret
 

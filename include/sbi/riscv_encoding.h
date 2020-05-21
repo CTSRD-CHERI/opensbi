@@ -164,9 +164,17 @@
 #define CSR_FCSR			0x3
 #define CSR_CYCLE			0xc00
 #define CSR_UIE				0x4
+#if __has_feature(capabilities)
+#pragma GCC poison CSR_UTVEC /* Should use UTCC for CHERI */
+#else
 #define CSR_UTVEC			0x5
+#endif
 #define CSR_USCRATCH			0x40
+#if __has_feature(capabilities)
+#pragma GCC poison CSR_UEPC /* Should use UEPCC for CHERI */
+#else
 #define CSR_UEPC			0x41
+#endif
 #define CSR_UCAUSE			0x42
 #define CSR_UTVAL			0x43
 #define CSR_UIP				0x44
@@ -203,10 +211,18 @@
 #define CSR_HPMCOUNTER31		0xc1f
 #define CSR_SSTATUS			0x100
 #define CSR_SIE				0x104
+#if __has_feature(capabilities)
+#pragma GCC poison CSR_STVEC /* Should use STCC for CHERI */
+#else
 #define CSR_STVEC			0x105
+#endif
 #define CSR_SCOUNTEREN			0x106
 #define CSR_SSCRATCH			0x140
+#if __has_feature(capabilities)
+#pragma GCC poison CSR_SEPC /* Should use SEPCC for CHERI */
+#else
 #define CSR_SEPC			0x141
+#endif
 #define CSR_SCAUSE			0x142
 #define CSR_STVAL			0x143
 #define CSR_SIP				0x144
@@ -228,9 +244,17 @@
 
 #define CSR_VSSTATUS			0x200
 #define CSR_VSIE			0x204
+#if __has_feature(capabilities)
+#pragma GCC poison CSR_VSTVEC /* Should use VSTCC for CHERI */
+#else
 #define CSR_VSTVEC			0x205
+#endif
 #define CSR_VSSCRATCH			0x240
+#if __has_feature(capabilities)
+#pragma GCC poison CSR_VSEPC /* Should use VSEPCC for CHERI */
+#else
 #define CSR_VSEPC			0x241
+#endif
 #define CSR_VSCAUSE			0x242
 #define CSR_VSTVAL			0x243
 #define CSR_VSIP			0x244
@@ -241,11 +265,19 @@
 #define CSR_MEDELEG			0x302
 #define CSR_MIDELEG			0x303
 #define CSR_MIE				0x304
+#if defined(__CHERI_PURE_CAPABILITY__)
+#pragma GCC poison CSR_MTVEC /* Should use MTCC for CHERI */
+#else
 #define CSR_MTVEC			0x305
+#endif
 #define CSR_MCOUNTEREN			0x306
 #define CSR_MSTATUSH			0x310
 #define CSR_MSCRATCH			0x340
+#if defined(__CHERI_PURE_CAPABILITY__)
+#pragma GCC poison CSR_MEPC /* Should use MEPCC for CHERI */
+#else
 #define CSR_MEPC			0x341
+#endif
 #define CSR_MCAUSE			0x342
 #define CSR_MTVAL			0x343
 #define CSR_MIP				0x344
@@ -543,26 +575,23 @@
 #define RVC_RS2(insn)			RV_X(insn, SH_RS2C, 5)
 
 #define SHIFT_RIGHT(x, y)		\
-	((y) < 0 ? ((x) << -(y)) : ((x) >> (y)))
+	((y) < 0 ? ((x) << (-(y))) : ((x) >> (y)))
 
-#define REG_MASK			\
-	((1 << (5 + LOG_REGBYTES)) - (1 << LOG_REGBYTES))
-
-#define REG_OFFSET(insn, pos)		\
-	(SHIFT_RIGHT((insn), (pos) - LOG_REGBYTES) & REG_MASK)
+#define REG_NUM(insn, pos)		\
+	(SHIFT_RIGHT((insn), (pos)) & 31)
 
 #define REG_PTR(insn, pos, regs)	\
-	(ulong *)((ulong)(regs) + REG_OFFSET(insn, pos))
+	((trap_reg_t *)((trap_reg_t*)(regs) + REG_NUM(insn, pos)))
 
 #define GET_RM(insn)			(((insn) >> 12) & 7)
 
-#define GET_RS1(insn, regs)		(*REG_PTR(insn, SH_RS1, regs))
-#define GET_RS2(insn, regs)		(*REG_PTR(insn, SH_RS2, regs))
-#define GET_RS1S(insn, regs)		(*REG_PTR(RVC_RS1S(insn), 0, regs))
-#define GET_RS2S(insn, regs)		(*REG_PTR(RVC_RS2S(insn), 0, regs))
-#define GET_RS2C(insn, regs)		(*REG_PTR(insn, SH_RS2C, regs))
+#define GET_RS1(insn, regs)		(*REG_PTR(insn, SH_RS1, regs)).intval
+#define GET_RS2(insn, regs)		(*REG_PTR(insn, SH_RS2, regs)).intval
+#define GET_RS1S(insn, regs)		(*REG_PTR(RVC_RS1S(insn), 0, regs)).intval
+#define GET_RS2S(insn, regs)		(*REG_PTR(RVC_RS2S(insn), 0, regs)).intval
+#define GET_RS2C(insn, regs)		(*REG_PTR(insn, SH_RS2C, regs)).intval
 #define GET_SP(regs)			(*REG_PTR(2, 0, regs))
-#define SET_RD(insn, regs, val)		(*REG_PTR(insn, SH_RD, regs) = (val))
+#define SET_RD(insn, regs, val)		(REG_PTR(insn, SH_RD, regs)->value = (val))
 #define IMM_I(insn)			((s32)(insn) >> 20)
 #define IMM_S(insn)			(((s32)(insn) >> 25 << 5) | \
 					 (s32)(((insn) >> 7) & 0x1f))

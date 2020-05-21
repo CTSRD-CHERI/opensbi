@@ -19,6 +19,9 @@ union reg_data {
 	u8 data_bytes[8];
 	ulong data_ulong;
 	u64 data_u64;
+#if __has_feature(capabilities)
+	__uintcap_t data_cap;
+#endif
 };
 
 int sbi_misaligned_load_handler(ulong addr, ulong tval2, ulong tinst,
@@ -134,7 +137,7 @@ int sbi_misaligned_load_handler(ulong addr, ulong tval2, ulong tinst,
 		SET_F32_RD(insn, regs, val.data_ulong);
 #endif
 
-	regs->mepc += INSN_LEN(insn);
+	regs->mepc.value += INSN_LEN(insn);
 
 	return 0;
 }
@@ -233,7 +236,7 @@ int sbi_misaligned_store_handler(ulong addr, ulong tval2, ulong tinst,
 		}
 	}
 
-	regs->mepc += INSN_LEN(insn);
+	regs->mepc.value += INSN_LEN(insn);
 
 	return 0;
 }

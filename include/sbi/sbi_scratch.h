@@ -15,27 +15,27 @@
 /* clang-format off */
 
 /** Offset of fw_start member in sbi_scratch */
-#define SBI_SCRATCH_FW_START_OFFSET		(0 * __SIZEOF_POINTER__)
+#define SBI_SCRATCH_FW_START_OFFSET		(0 * __SIZEOF_LONG__)
 /** Offset of fw_size member in sbi_scratch */
-#define SBI_SCRATCH_FW_SIZE_OFFSET		(1 * __SIZEOF_POINTER__)
+#define SBI_SCRATCH_FW_SIZE_OFFSET		(1 * __SIZEOF_LONG__)
 /** Offset of next_arg1 member in sbi_scratch */
-#define SBI_SCRATCH_NEXT_ARG1_OFFSET		(2 * __SIZEOF_POINTER__)
+#define SBI_SCRATCH_NEXT_ARG1_OFFSET		(2 * __SIZEOF_LONG__)
 /** Offset of next_addr member in sbi_scratch */
-#define SBI_SCRATCH_NEXT_ADDR_OFFSET		(3 * __SIZEOF_POINTER__)
+#define SBI_SCRATCH_NEXT_ADDR_OFFSET		(3 * __SIZEOF_LONG__)
 /** Offset of next_mode member in sbi_scratch */
-#define SBI_SCRATCH_NEXT_MODE_OFFSET		(4 * __SIZEOF_POINTER__)
+#define SBI_SCRATCH_NEXT_MODE_OFFSET		(4 * __SIZEOF_LONG__)
 /** Offset of warmboot_addr member in sbi_scratch */
-#define SBI_SCRATCH_WARMBOOT_ADDR_OFFSET	(5 * __SIZEOF_POINTER__)
+#define SBI_SCRATCH_WARMBOOT_ADDR_OFFSET	(5 * __SIZEOF_LONG__)
 /** Offset of platform_addr member in sbi_scratch */
-#define SBI_SCRATCH_PLATFORM_ADDR_OFFSET	(6 * __SIZEOF_POINTER__)
+#define SBI_SCRATCH_PLATFORM_ADDR_OFFSET	(6 * __SIZEOF_LONG__)
 /** Offset of hartid_to_scratch member in sbi_scratch */
-#define SBI_SCRATCH_HARTID_TO_SCRATCH_OFFSET	(7 * __SIZEOF_POINTER__)
+#define SBI_SCRATCH_HARTID_TO_SCRATCH_OFFSET	(7 * __SIZEOF_LONG__)
 /** Offset of tmp0 member in sbi_scratch */
-#define SBI_SCRATCH_TMP0_OFFSET			(8 * __SIZEOF_POINTER__)
+#define SBI_SCRATCH_TMP0_OFFSET			(8 * __SIZEOF_LONG__)
 /** Offset of options member in sbi_scratch */
-#define SBI_SCRATCH_OPTIONS_OFFSET		(9 * __SIZEOF_POINTER__)
+#define SBI_SCRATCH_OPTIONS_OFFSET		(9 * __SIZEOF_LONG__)
 /** Offset of extra space in sbi_scratch */
-#define SBI_SCRATCH_EXTRA_SPACE_OFFSET		(10 * __SIZEOF_POINTER__)
+#define SBI_SCRATCH_EXTRA_SPACE_OFFSET		(10 * __SIZEOF_LONG__)
 /** Maximum size of sbi_scratch (4KB) */
 #define SBI_SCRATCH_SIZE			(0x1000)
 

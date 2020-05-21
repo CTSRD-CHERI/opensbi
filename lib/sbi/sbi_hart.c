@@ -437,9 +437,8 @@ void __attribute__((noreturn)) sbi_hart_hang(void)
 }
 
 void __attribute__((noreturn))
-sbi_hart_switch_mode(unsigned long arg0, unsigned long arg1,
-		     unsigned long next_addr, unsigned long next_mode,
-		     bool next_virt)
+sbi_hart_switch_mode(unsigned long arg0, unsigned long arg1, mtvec_t next_addr,
+		     unsigned long next_mode, bool next_virt)
 {
 #if __riscv_xlen == 32
 	unsigned long val, valH;
@@ -483,15 +482,29 @@ sbi_hart_switch_mode(unsigned long arg0, unsigned long arg1,
 	}
 #endif
 	csr_write(CSR_MSTATUS, val);
+#if __has_feature(capabilities)
+	cheri_scr_write(mepcc, (__uintcap_t)next_addr);
+#else
 	csr_write(CSR_MEPC, next_addr);
+#endif
 
 	if (next_mode == PRV_S) {
+#if __has_feature(capabilities)
+		cheri_scr_write(stcc, (__uintcap_t)next_addr);
+		cheri_scr_write(sscratchc, 0);
+#else
 		csr_write(CSR_STVEC, next_addr);
+#endif
 		csr_write(CSR_SSCRATCH, 0);
 		csr_write(CSR_SIE, 0);
 		csr_write(CSR_SATP, 0);
 	} else if (next_mode == PRV_U) {
+#if __has_feature(capabilities)
+		cheri_scr_write(utcc, (__uintcap_t)next_addr);
+		cheri_scr_write(uscratchc, 0);
+#else
 		csr_write(CSR_UTVEC, next_addr);
+#endif
 		csr_write(CSR_USCRATCH, 0);
 		csr_write(CSR_UIE, 0);
 	}

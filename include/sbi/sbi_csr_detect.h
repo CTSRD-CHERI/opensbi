@@ -13,17 +13,26 @@
 #include <sbi/riscv_encoding.h>
 #include <sbi/sbi_hart.h>
 
+#ifdef __CHERI_PURE_CAPABILITY__
+/* We have to use mtcc instead of mtvec for purecap */
+#define SWAP_MTVEC(r1, r2) "cspecialrw" r1 ", mtcc, " r2 "\n"
+#define SET_MTVEC(value) "cspecialw mtcc, " value "\n"
+#else
+#define SWAP_MTVEC(r1, r2) "csrrw " r1 ", " STR(CSR_MTVEC) ", " r2 "\n"
+#define SET_MTVEC(value) "csrw " STR(CSR_MTVEC) ", " value "\n"
+#endif
+
 #define csr_read_allowed(csr_num, trap)					\
 	({								\
 	register ulong tinfo asm("a3") = (ulong)trap;			\
 	register ulong ttmp asm("a4");					\
-	register ulong mtvec = sbi_hart_expected_trap_addr();		\
+	register mtvec_t mtvec = sbi_hart_expected_trap_addr();		\
 	register ulong ret = 0;						\
 	asm volatile(							\
 		"add %[ttmp], %[tinfo], zero\n"				\
-		"csrrw %[mtvec], " STR(CSR_MTVEC) ", %[mtvec]\n"	\
+		SWAP_MTVEC("%[mtvec]", "%[mtvec]")			\
 		"csrr %[ret], %[csr]\n"					\
-		"csrw " STR(CSR_MTVEC) ", %[mtvec]"			\
+		SET_MTVEC("%[mtvec]")					\
 	    : [mtvec] "+&r"(mtvec), [tinfo] "+&r"(tinfo),		\
 	      [ttmp] "+&r"(ttmp), [ret] "=&r" (ret)			\
 	    : [csr] "i" (csr_num)					\
@@ -35,12 +44,12 @@
 	({								\
 	register ulong tinfo asm("a3") = (ulong)trap;			\
 	register ulong ttmp asm("a4");					\
-	register ulong mtvec = sbi_hart_expected_trap_addr();		\
+	register mtvec_t mtvec = sbi_hart_expected_trap_addr();		\
 	asm volatile(							\
 		"add %[ttmp], %[tinfo], zero\n"				\
-		"csrrw %[mtvec], " STR(CSR_MTVEC) ", %[mtvec]\n"	\
+		SWAP_MTVEC("%[mtvec]", "%[mtvec]")			\
 		"csrw %[csr], %[val]\n"					\
-		"csrw " STR(CSR_MTVEC) ", %[mtvec]"			\
+		SET_MTVEC("%[mtvec]")					\
 	    : [mtvec] "+&r"(mtvec),					\
 	      [tinfo] "+&r"(tinfo), [ttmp] "+&r"(ttmp)			\
 	    : [csr] "i" (csr_num), [val] "r" (value)			\

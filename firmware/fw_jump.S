@@ -106,4 +106,4 @@ fw_options:
 	.section .entry, "ax", %progbits
 	.align 3
 _jump_addr:
-	RISCV_PTR FW_JUMP_ADDR
+	RISCV_ADDR FW_JUMP_ADDR
