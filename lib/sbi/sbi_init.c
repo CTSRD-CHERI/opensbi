@@ -216,7 +216,15 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
 	(*init_count)++;
 
 	sbi_hsm_prepare_next_jump(scratch, hartid);
-	sbi_hart_switch_mode(hartid, scratch->next_arg1, scratch->next_addr,
+	sbi_hart_switch_mode(hartid, scratch->next_arg1,
+#if __has_feature(capabilities)
+			     /* derive STCC, from current PCC */
+			     __builtin_cheri_address_set(
+				     __builtin_cheri_program_counter_get(),
+				     scratch->next_addr),
+#else
+			     scratch->next_addr,
+#endif
 			     scratch->next_mode, FALSE);
 }
 
@@ -268,7 +276,14 @@ static void __noreturn init_warmboot(struct sbi_scratch *scratch, u32 hartid)
 
 	sbi_hsm_prepare_next_jump(scratch, hartid);
 	sbi_hart_switch_mode(hartid, scratch->next_arg1,
+#if __has_feature(capabilities)
+			     /* derive STCC, from current PCC */
+			     __builtin_cheri_address_set(
+				     __builtin_cheri_program_counter_get(),
+				     scratch->next_addr),
+#else
 			     scratch->next_addr,
+#endif
 			     scratch->next_mode, FALSE);
 }
 

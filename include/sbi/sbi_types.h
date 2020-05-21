@@ -90,6 +90,10 @@ typedef unsigned long		physical_size_t;
 #define ROUNDUP(a, b) ((((a)-1) / (b) + 1) * (b))
 #define ROUNDDOWN(a, b) ((a) / (b) * (b))
 
+#if !__has_feature(capabilities)
+#define __capability
+#endif
+
 /* clang-format on */
 
 #else
