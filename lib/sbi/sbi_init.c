@@ -223,7 +223,7 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
 				     __builtin_cheri_program_counter_get(),
 				     scratch->next_addr),
 #else
-			     scratch->next_addr,
+			     (void *)scratch->next_addr,
 #endif
 			     scratch->next_mode, FALSE);
 }
@@ -282,7 +282,7 @@ static void __noreturn init_warmboot(struct sbi_scratch *scratch, u32 hartid)
 				     __builtin_cheri_program_counter_get(),
 				     scratch->next_addr),
 #else
-			     scratch->next_addr,
+			     (void *)scratch->next_addr,
 #endif
 			     scratch->next_mode, FALSE);
 }
