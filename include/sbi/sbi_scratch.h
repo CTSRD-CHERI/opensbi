@@ -11,6 +11,7 @@
 #define __SBI_SCRATCH_H__
 
 #include <sbi/riscv_asm.h>
+#include <sbi/sbi_trap.h>
 
 /* clang-format off */
 
@@ -30,12 +31,12 @@
 #define SBI_SCRATCH_PLATFORM_ADDR_OFFSET	(6 * __SIZEOF_LONG__)
 /** Offset of hartid_to_scratch member in sbi_scratch */
 #define SBI_SCRATCH_HARTID_TO_SCRATCH_OFFSET	(7 * __SIZEOF_LONG__)
-/** Offset of tmp0 member in sbi_scratch */
-#define SBI_SCRATCH_TMP0_OFFSET			(8 * __SIZEOF_LONG__)
 /** Offset of options member in sbi_scratch */
-#define SBI_SCRATCH_OPTIONS_OFFSET		(9 * __SIZEOF_LONG__)
+#define SBI_SCRATCH_OPTIONS_OFFSET		(8 * __SIZEOF_LONG__)
 /** Offset of extra space in sbi_scratch */
-#define SBI_SCRATCH_EXTRA_SPACE_OFFSET		(10 * __SIZEOF_LONG__)
+#define SBI_SCRATCH_EXTRA_SPACE_OFFSET		(9 * __SIZEOF_LONG__)
+/** Offset of tmp0 member in sbi_scratch */
+#define SBI_SCRATCH_TMP0_OFFSET			(10 * __SIZEOF_LONG__)
 /** Maximum size of sbi_scratch (4KB) */
 #define SBI_SCRATCH_SIZE			(0x1000)
 
@@ -63,11 +64,11 @@ struct sbi_scratch {
 	unsigned long platform_addr;
 	/** Address of HART ID to sbi_scratch conversion function */
 	unsigned long hartid_to_scratch;
-	/** Temporary storage */
-	unsigned long tmp0;
 	/** Options for OpenSBI library */
 	unsigned long options;
-} __packed;
+	/** Temporary storage */
+	trap_reg_t tmp0;
+} __packed __attribute__((aligned(_Alignof(trap_reg_t))));
 
 /** Possible options for OpenSBI library */
 enum sbi_scratch_options {
@@ -78,8 +79,19 @@ enum sbi_scratch_options {
 };
 
 /** Get pointer to sbi_scratch for current HART */
+#if __has_feature(capabilities)
+#ifdef __CHERI_PURE_CAPABILITY__
+#define sbi_scratch_thishart_ptr() \
+	((struct sbi_scratch *)cheri_scr_read(mscratchc))
+#else
+#define sbi_scratch_thishart_ptr()                          \
+	((struct sbi_scratch *)__builtin_cheri_address_get( \
+		cheri_scr_read(mscratchc)))
+#endif
+#else
 #define sbi_scratch_thishart_ptr() \
 	((struct sbi_scratch *)csr_read(CSR_MSCRATCH))
+#endif
 
 /** Get Arg1 of next booting stage for current HART */
 #define sbi_scratch_thishart_arg1_ptr() \

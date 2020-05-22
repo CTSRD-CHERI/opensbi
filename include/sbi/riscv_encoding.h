@@ -272,7 +272,11 @@
 #endif
 #define CSR_MCOUNTEREN			0x306
 #define CSR_MSTATUSH			0x310
+#if __has_feature(capabilities)
+#pragma GCC poison CSR_MSCRATCH /* Should use MSCRATCHC for CHERI */
+#else
 #define CSR_MSCRATCH			0x340
+#endif
 #if defined(__CHERI_PURE_CAPABILITY__)
 #pragma GCC poison CSR_MEPC /* Should use MEPCC for CHERI */
 #else

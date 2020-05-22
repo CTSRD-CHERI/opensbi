@@ -13,7 +13,11 @@
 /* clang-format off */
 
 /** Index of zero member in sbi_trap_regs */
+#if __has_feature(capabilities)
+#define SBI_TRAP_REGS_ddc			0
+#else
 #define SBI_TRAP_REGS_zero			0
+#endif
 /** Index of ra member in sbi_trap_regs */
 #define SBI_TRAP_REGS_ra			1
 /** Index of sp member in sbi_trap_regs */
@@ -156,7 +160,11 @@ typedef union {
 /** Representation of register state at time of trap/interrupt */
 struct sbi_trap_regs {
 	/** zero register state */
+#if __has_feature(capabilities)
+	trap_reg_t ddc;
+#else
 	trap_reg_t zero;
+#endif
 	/** ra register state */
 	trap_reg_t ra;
 	/** sp register state */

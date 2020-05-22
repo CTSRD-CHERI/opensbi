@@ -53,11 +53,31 @@
 999:
 .endm
 
+.macro MOVE_CREG dst, src
+#if __has_feature(capabilities)
+	cmove c\dst, c\src
+#else
+	add	\dst, \src, zero
+#endif
+.endm
+.macro INC_CREG dst, src, imm
+#if __has_feature(capabilities)
+	cincoffset	c\dst, c\src, \imm
+#else
+	add	\dst, \src, \imm
+#endif
+.endm
+
 	.section .entry, "ax", %progbits
 	.align 3
 	.globl _start
 	.globl _start_warm
 _start:
+#if __has_feature(capabilities)
+	/* write DDC to MTDC */
+	cspecialr ct0, ddc
+	cspecialw mtdc, ct0
+#endif
 	/* Find preferred boot HART id */
 	MOV_3R	s0, a0, s1, a1, s2, a2
 	call	fw_boot_hart
@@ -422,7 +442,17 @@ _start_warm:
 	sub	tp, tp, a5
 
 	/* update the mscratch */
+#if __has_feature(capabilities)
+install_ctp:
+	/* Create a DDC-derived capability for scratch (we need this to
+	 * save the first register without switching to capmode). */
+	cspecialr	ct0, ddc
+	csetaddr	ctp, ct0, tp
+	cspecialw	mscratchc, ctp
+	cmove	ct0, cnull
+#else
 	csrw	CSR_MSCRATCH, tp
+#endif
 
 	/* Setup stack */
 	add	sp, tp, zero
@@ -432,7 +462,11 @@ _start_warm:
 	csrw	CSR_MTVEC, a4
 
 	/* Initialize SBI runtime */
+#if __has_feature(capabilities)
+	cspecialr	ca0, mscratchc
+#else
 	csrr	a0, CSR_MSCRATCH
+#endif
 	call	sbi_init
 
 	/* We don't expect to reach here hence just hang */
@@ -496,10 +530,21 @@ fw_platform_init:
 	.globl _trap_handler
 _trap_handler:
 	/* Swap TP and MSCRATCH */
+#if __has_feature(capabilities)
+	cspecialrw	ctp, mscratchc, ctp
+	/* Save CT0 in scratch space (we don't have an immediate) */
+	cincoffset ctp, ctp, SBI_SCRATCH_TMP0_OFFSET
+	sc.cap	ct0, 0(ctp)
+	cincoffset ctp, ctp, -SBI_SCRATCH_TMP0_OFFSET
+	/* swap caller DDC with mtdc */
+	cspecialr	ct0, mtdc
+	cspecialrw	ct0, ddc, ct0
+	cspecialw	mtdc, ct0
+#else
 	csrrw	tp, CSR_MSCRATCH, tp
-
 	/* Save T0 in scratch space */
 	REG_S	t0, SBI_SCRATCH_TMP0_OFFSET(tp)
+#endif
 
 	/* Check which mode we came from */
 	csrr	t0, CSR_MSTATUS
@@ -508,13 +553,14 @@ _trap_handler:
 	xori	t0, t0, PRV_M
 	beq	t0, zero, _trap_handler_m_mode
 
+
 	/* We came from S-mode or U-mode */
 _trap_handler_s_mode:
 	/* Set T0 to original SP */
-	add	t0, sp, zero
+	MOVE_CREG	t0, sp
 
 	/* Setup exception stack */
-	add	sp, tp, -(SBI_TRAP_REGS_SIZE)
+	INC_CREG	sp, tp, -(SBI_TRAP_REGS_SIZE)
 
 	/* Jump to code common for all modes */
 	j	_trap_handler_all_mode
@@ -522,23 +568,31 @@ _trap_handler_s_mode:
 	/* We came from M-mode */
 _trap_handler_m_mode:
 	/* Set T0 to original SP */
-	add	t0, sp, zero
+	MOVE_CREG	t0, sp
 
 	/* Re-use current SP as exception stack */
-	add	sp, sp, -(SBI_TRAP_REGS_SIZE)
+	INC_CREG	sp, sp, -(SBI_TRAP_REGS_SIZE)
 
 _trap_handler_all_mode:
 	/* Save original SP (from T0) on stack */
 	SAVE_TRAP_REG(t0, sp, sp)
 
 	/* Restore T0 from scratch space */
+#if __has_feature(capabilities)
+	lc	ct0, SBI_SCRATCH_TMP0_OFFSET(tp)
+#else
 	REG_L	t0, SBI_SCRATCH_TMP0_OFFSET(tp)
+#endif
 
 	/* Save T0 on stack */
 	SAVE_TRAP_REG(t0, t0, sp)
 
 	/* Swap TP and MSCRATCH */
+#if __has_feature(capabilities)
+	cspecialrw	ctp, mscratchc, ctp
+#else
 	csrrw	tp, CSR_MSCRATCH, tp
+#endif
 
 	/* Save MEPC and MSTATUS CSRs */
 #if __has_feature(capabilities)
@@ -563,7 +617,9 @@ _skip_mstatush_save:
 
 	/* Save all general regisers except SP and T0 */
 #if __has_feature(capabilities)
-	SAVE_TRAP_REG(null, zero, sp)
+	/* Caller DDC was stashed in mtdc */
+	cspecialr	ct0, mtdc
+	SAVE_TRAP_REG(t0, ddc, sp)
 #else
 	SAVE_TRAP_REG(zero, zero, sp)
 #endif
@@ -598,7 +654,7 @@ _skip_mstatush_save:
 	SAVE_TRAP_REG(t6, t6, sp)
 
 	/* Call C routine */
-	add	a0, sp, zero
+	MOVE_CREG	a0, sp
 	call	sbi_trap_handler
 
 	/* Restore all general regisers except SP and T0 */
@@ -652,11 +708,27 @@ _skip_mstatush_save:
 _skip_mstatush_restore:
 #endif
 
+
+#if __has_feature(capabilities)
+	/* Make csp stack capability rather than an address */
+	cspecialr	ct0, ddc
+	csetaddr	csp, ct0, sp
+	cspecialrw	ct0, mtdc, ct0 /* Restore MTDC */
+	cspecialw	ddc, ct0 /* Restore caller DDC */
+
+	/* Restore (c)t0 */
+	cincoffset csp, csp, SBI_TRAP_REGS_OFFSET(t0)
+	lc.cap ct0, 0(csp)
+	cincoffset csp, csp, -SBI_TRAP_REGS_OFFSET(t0)
+	/* Restore (c)sp */
+	cincoffset csp, csp, SBI_TRAP_REGS_OFFSET(sp)
+	lc.cap csp, 0(csp)
+#else
 	/* Restore T0 */
 	RESTORE_TRAP_REG(t0, t0, sp)
-
 	/* Restore SP */
 	RESTORE_TRAP_REG(sp, sp, sp)
+#endif
 
 	mret
 
@@ -695,6 +767,11 @@ _reset_regs:
 	li t4, 0
 	li t5, 0
 	li t6, 0
+	# Zero mscratch
+#if __has_feature(capabilities)
+	cspecialw mscratchc, ct6  # Note: can't use cnull due to it encoding a no-op
+#else
 	csrw CSR_MSCRATCH, 0
+#endif
 
 	ret
