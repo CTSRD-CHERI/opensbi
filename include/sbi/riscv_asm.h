@@ -127,7 +127,7 @@
 	})
 #define cheri_scr_read(csr)                                          \
 	({                                                           \
-		__uintcap_t __v;                                     \
+		void *__capability __v;                              \
 		__asm__ __volatile__("cspecialr %0, " __ASM_STR(csr) \
 				     : "=C"(__v)                     \
 				     :                               \

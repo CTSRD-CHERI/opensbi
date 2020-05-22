@@ -197,7 +197,7 @@ int sbi_trap_redirect(struct sbi_trap_regs *regs,
 
 		/* Set MEPC to S-mode exception vector base */
 #if __has_feature(capabilities)
-		regs->mepc.value = cheri_scr_read(stcc);
+		regs->mepc.ptrval = cheri_scr_read(stcc);
 #else
 		regs->mepc.value = csr_read(CSR_STVEC);
 #endif
