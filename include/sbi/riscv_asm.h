@@ -121,9 +121,10 @@
 	({                                                              \
 		__uintcap_t __v = val;                                  \
 		__asm__ __volatile__("cspecialw " __ASM_STR(csr) ", %0" \
+				     : "+C"(__v)                        \
 				     :                                  \
-				     : "C"(__v)                         \
 				     : "memory");                       \
+		__v;                                                    \
 	})
 #define cheri_scr_read(csr)                                          \
 	({                                                           \
