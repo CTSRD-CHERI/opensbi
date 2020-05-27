@@ -43,6 +43,18 @@
 
 /* clang-format on */
 
+static struct plic_data plic = {
+	.addr = UX600_PLIC_ADDR,
+	.num_src = UX600_PLIC_NUM_SOURCES,
+};
+
+static struct clint_data clint = {
+	.addr = UX600_CLINT_TIMER_ADDR,
+	.first_hartid = 0,
+	.hart_count = UX600_HART_COUNT,
+	.has_64bit_mmio = TRUE,
+};
+
 static void ux600_modify_dt(void *fdt)
 {
 	fdt_fixups(fdt);
@@ -73,14 +85,12 @@ static int ux600_irqchip_init(bool cold_boot)
 	u32 hartid = current_hartid();
 
 	if (cold_boot) {
-		rc = plic_cold_irqchip_init(UX600_PLIC_ADDR,
-					    UX600_PLIC_NUM_SOURCES,
-					    UX600_HART_COUNT);
+		rc = plic_cold_irqchip_init(&plic);
 		if (rc)
 			return rc;
 	}
 
-	return plic_warm_irqchip_init(hartid, (hartid) ? (2 * hartid - 1) : 0,
+	return plic_warm_irqchip_init(&plic, (hartid) ? (2 * hartid - 1) : 0,
 				      (hartid) ? (2 * hartid) : -1);
 }
 
@@ -89,7 +99,7 @@ static int ux600_ipi_init(bool cold_boot)
 	int rc;
 
 	if (cold_boot) {
-		rc = clint_cold_ipi_init(UX600_CLINT_TIMER_ADDR, UX600_HART_COUNT);
+		rc = clint_cold_ipi_init(&clint);
 		if (rc)
 			return rc;
 	}
@@ -102,8 +112,7 @@ static int ux600_timer_init(bool cold_boot)
 	int rc;
 
 	if (cold_boot) {
-		rc = clint_cold_timer_init(UX600_CLINT_TIMER_ADDR,
-					   UX600_HART_COUNT, TRUE);
+		rc = clint_cold_timer_init(&clint, NULL);
 		if (rc)
 			return rc;
 	}
