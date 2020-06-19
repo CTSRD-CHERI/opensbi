@@ -94,10 +94,15 @@ static int delegate_traps(struct sbi_scratch *scratch, u32 hartid)
 	interrupts = MIP_SSIP | MIP_STIP | MIP_SEIP;
 	exceptions = (1U << CAUSE_MISALIGNED_FETCH) | (1U << CAUSE_BREAKPOINT) |
 		     (1U << CAUSE_USER_ECALL);
-	if (sbi_platform_has_mfaults_delegation(plat))
+	if (sbi_platform_has_mfaults_delegation(plat)) {
 		exceptions |= (1U << CAUSE_FETCH_PAGE_FAULT) |
 			      (1U << CAUSE_LOAD_PAGE_FAULT) |
 			      (1U << CAUSE_STORE_PAGE_FAULT);
+#if __has_feature(capabilities)
+		exceptions |= 1U << CAUSE_LOAD_CAP_PAGE_FAULT;
+		exceptions |= 1U << CAUSE_STORE_CAP_PAGE_FAULT;
+#endif
+	}
 
 	/*
 	 * If hypervisor extension available then we only handle hypervisor
@@ -114,8 +119,6 @@ static int delegate_traps(struct sbi_scratch *scratch, u32 hartid)
 	}
 
 #if __has_feature(capabilities)
-	exceptions |= 1U << CAUSE_LOAD_CAP_PAGE_FAULT;
-	exceptions |= 1U << CAUSE_STORE_CAP_PAGE_FAULT;
 	exceptions |= 1U << CAUSE_CHERI_FAULT;
 #endif
 
