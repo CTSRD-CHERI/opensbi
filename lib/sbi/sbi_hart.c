@@ -113,6 +113,10 @@ static int delegate_traps(struct sbi_scratch *scratch, u32 hartid)
 		exceptions |= (1U << CAUSE_STORE_GUEST_PAGE_FAULT);
 	}
 
+#if __has_feature(capabilities)
+	exceptions |= 1U << CAUSE_CHERI_FAULT;
+#endif
+
 	csr_write(CSR_MIDELEG, interrupts);
 	csr_write(CSR_MEDELEG, exceptions);
 
