@@ -114,6 +114,8 @@ static int delegate_traps(struct sbi_scratch *scratch, u32 hartid)
 	}
 
 #if __has_feature(capabilities)
+	exceptions |= 1U << CAUSE_LOAD_CAP_PAGE_FAULT;
+	exceptions |= 1U << CAUSE_STORE_CAP_PAGE_FAULT;
 	exceptions |= 1U << CAUSE_CHERI_FAULT;
 #endif
 
